@@ -77,6 +77,7 @@ import static org.apache.spark.sql.types.DataTypes.LongType;
 public final class SampleCassandraJob
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(SampleCassandraJob.class);
+    private static int sidecarPort;
 
     private SampleCassandraJob()
     {
@@ -85,6 +86,14 @@ public final class SampleCassandraJob
 
     public static void main(String[] args)
     {
+        if (args.length < 1)
+        {
+            sidecarPort = 9043;
+        }
+        else
+        {
+            sidecarPort = Integer.parseInt(args[0]);
+        }
         LOGGER.info("Starting Spark job with args={}", Arrays.toString(args));
 
         SparkConf sparkConf = new SparkConf().setAppName("Sample Spark Cassandra Bulk Reader Job")
@@ -106,9 +115,8 @@ public final class SampleCassandraJob
 
         try
         {
-            Dataset<Row> written = write(rowCount, sparkConf, sql, sc);
+            Dataset<Row> written = write(rowCount, sql, sc);
             Dataset<Row> read = read(rowCount, sparkConf, sql, sc);
-
             checkSmallDataFrameEquality(written, read);
             LOGGER.info("Finished Spark job, shutting down...");
             sc.stop();
@@ -123,10 +131,11 @@ public final class SampleCassandraJob
             catch (Throwable ignored)
             {
             }
+            throw throwable; // rethrow so the exception bubbles up to test usages.
         }
     }
 
-    private static Dataset<Row> write(long rowCount, SparkConf sparkConf, SQLContext sql, SparkContext sc)
+    private static Dataset<Row> write(long rowCount, SQLContext sql, SparkContext sc)
     {
         JavaSparkContext javaSparkContext = JavaSparkContext.fromSparkContext(sc);
         int parallelism = sc.defaultParallelism();
@@ -138,6 +147,7 @@ public final class SampleCassandraJob
         DataFrameWriter<Row> dfWriter = df.write()
                                           .format("org.apache.cassandra.spark.sparksql.CassandraDataSink")
                                           .option("sidecar_instances", "localhost,localhost2,localhost3")
+                                          .option("sidecar_port", sidecarPort)
                                           .option("keyspace", "spark_test")
                                           .option("table", "test")
                                           .option("local_dc", "datacenter1")
@@ -181,6 +191,7 @@ public final class SampleCassandraJob
 
         Dataset<Row> df = sql.read().format("org.apache.cassandra.spark.sparksql.CassandraDataSource")
                              .option("sidecar_instances", "localhost,localhost2,localhost3")
+                             .option("sidecar_port", sidecarPort)
                              .option("keyspace", "spark_test")
                              .option("table", "test")
                              .option("DC", "datacenter1")
@@ -196,8 +207,9 @@ public final class SampleCassandraJob
 
         if (count != expectedRowCount)
         {
-            LOGGER.error("Expected {} records but found {} records", expectedRowCount, count);
-            return null;
+                throw new RuntimeException(String.format("Expected %d records but found %d records",
+                                                         expectedRowCount,
+                                                         count));
         }
         return df;
     }
@@ -225,7 +237,14 @@ public final class SampleCassandraJob
         {
             throw new NullPointerException("actual dataframe is null");
         }
-        if (!actual.exceptAll(expected).isEmpty())
+        if (expected == null)
+        {
+            throw new NullPointerException("expected dataframe is null");
+        }
+        // Simulate `actual` having fewer rows, but all match rows in `expected`.
+        // The previous implementation would consider these equal
+        // actual = actual.limit(1000);
+        if (!actual.exceptAll(expected).isEmpty() || !expected.exceptAll(actual).isEmpty())
         {
             throw new IllegalStateException("The content of the dataframes differs");
         }
@@ -249,19 +268,16 @@ public final class SampleCassandraJob
                 Integer courseNameStringLen = courseNameString.length();
                 Integer courseNameMultiplier = 1000 / courseNameStringLen;
                 byte[] courseName = dupStringAsBytes(courseNameString, courseNameMultiplier);
-                if (addTTLColumn && addTimestampColumn)
-                {
-                    return RowFactory.create(recordNumber, courseName, recordNumber, ttl, timeStamp);
-                }
+                ArrayList<Object> values = new ArrayList<>(Arrays.asList(recordNumber, courseName, recordNumber));
                 if (addTTLColumn)
                 {
-                    return RowFactory.create(recordNumber, courseName, recordNumber, ttl);
+                    values.add(ttl);
                 }
                 if (addTimestampColumn)
                 {
-                    return RowFactory.create(recordNumber, courseName, recordNumber, timeStamp);
+                    values.add(timeStamp);
                 }
-                return RowFactory.create(recordNumber, courseName, recordNumber);
+                return RowFactory.create(values.toArray());
             }).iterator();
             return rows;
         }, false);

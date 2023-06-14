@@ -1,3 +1,5 @@
+import org.nosphere.apache.rat.RatTask
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -53,6 +55,11 @@ apply(from: profile)
 
 apply(plugin: 'idea')
 
+
+// Force checkstyle and rat to run before test tasks for faster feedback
+def codeCheckTasks = task("codeCheckTasks")
+
+
 tasks.register('copyCodeStyle', Copy) {
   from('ide/idea/codeStyleSettings.xml')
   into('.idea')
@@ -70,7 +77,7 @@ tasks.register('buildIgnoreRatList', Exec) {
   description 'Builds a list of ignored files for the rat task from the unversioned git files'
   commandLine 'bash', '-c', 'git clean --force -d --dry-run -x | cut -c 14-'
   doFirst {
-    standardOutput new FileOutputStream("${buildDir}/.rat-excludes.txt")
+    standardOutput new FileOutputStream(".rat-excludes.txt")
   }
   // allows task to fail when git/cut commands are unavailable or fail
   ignoreExitValue = true
@@ -79,7 +86,7 @@ tasks.register('buildIgnoreRatList', Exec) {
 rat {
 
   doFirst {
-    def excludeFilePath = Paths.get("${buildDir}/.rat-excludes.txt")
+    def excludeFilePath = Paths.get(".rat-excludes.txt")
     def excludeLines = Files.readAllLines(excludeFilePath)
     excludeLines.each { line ->
       if (line.endsWith("/")) {
@@ -107,6 +114,12 @@ rat {
 
   // resource files for test
   excludes.add("**/test**/resources/**")
+
+  // resources
+  excludes.add("**/resources/sidecar.version")
+
+  // Rat excludes file, one directive per line
+  excludeFile.set(layout.projectDirectory.file(".rat-excludes.txt"))
 
   // XML, TXT and HTML reports directory, defaults to 'build/reports/rat'
   reportDir.set(file("build/reports/rat"))
@@ -195,5 +208,14 @@ subprojects {
       jvmArgs(JDK11_OPTIONS)
       println("JVM arguments for $project.name are $allJvmArgs")
     }
+  }
+
+  codeCheckTasks.dependsOn(tasks.withType(Checkstyle))
+  codeCheckTasks.dependsOn(tasks.withType(RatTask))
+
+  tasks.withType(Test) {
+    shouldRunAfter(codeCheckTasks)
+    shouldRunAfter(tasks.withType(Checkstyle))
+    shouldRunAfter(tasks.withType(RatTask))
   }
 }

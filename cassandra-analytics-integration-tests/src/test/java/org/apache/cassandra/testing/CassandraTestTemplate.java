@@ -306,7 +306,7 @@ public class CassandraTestTemplate implements TestTemplateInvocationContextProvi
         System.setProperty("cassandra.consistent.simultaneousmoves.allow", "true");
         // End gossip delay settings
         // Set the location of dtest jars
-        System.setProperty("cassandra.test.dtest_jar_path", "dtest-jars");
+        System.setProperty("cassandra.test.dtest_jar_path", System.getProperty("cassandra.test.dtest_jar_path", "dtest-jars"));
         // Disable tcnative in netty as it can cause jni issues and logs lots errors
         System.setProperty("cassandra.disable_tcactive_openssl", "true");
     }

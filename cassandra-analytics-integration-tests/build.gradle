@@ -20,10 +20,6 @@
 project(':cassandra-analytics-integration-tests') {
     apply(plugin: 'java-library')
 
-    repositories {
-        mavenLocal()
-    }
-
     dependencies {
         testImplementation(group: "${sparkGroupId}", name: "spark-core_${scalaMajorVersion}", version: "${project.rootProject.sparkVersion}")
         testImplementation(group: "${sparkGroupId}", name: "spark-sql_${scalaMajorVersion}", version: "${project.rootProject.sparkVersion}")
@@ -33,21 +29,19 @@ project(':cassandra-analytics-integration-tests') {
         testImplementation("org.junit.jupiter:junit-jupiter-params:${project.junitVersion}")
         testImplementation("org.junit.jupiter:junit-jupiter-engine:${project.junitVersion}")
 
-        // we use the Sidecar integration test framework as well, so it needs to be built and deployed to mavenLocal.
-        // TODO: More documentation!
-        // ./gradlew -Pversion=1.0.0-local publishToMavenLocal
-        testImplementation(group: 'org.apache.cassandra.sidecar', name: 'common', version: '1.0.0-local')
-        testImplementation(group: 'org.apache.cassandra.sidecar', name: 'adapters-base', version: '1.0.0-local')
+        // These dependencies (sidecar + dtest jars) must be built by running `scripts/build-dependencies.sh`
+        testImplementation(group: 'org.apache.cassandra.sidecar', name: 'common', version: "${sidecarVersion}")
+        testImplementation(group: 'org.apache.cassandra.sidecar', name: 'adapters-base', version: "${sidecarVersion}")
         // The server itself
-        testImplementation (group: "org.apache.cassandra", name: "cassandra-sidecar", version: "1.0.0-local") {
+        testImplementation (group: "org.apache.cassandra", name: "cassandra-sidecar", version: "1.0.0-analytics") {
             exclude(group: 'org.apache.logging.log4j')
             exclude(group: 'org.slf4j')
             exclude(group: 'ch.qos.logback')
         }
 
-        ext.dtestJar = System.getenv("DTEST_JAR") ?: "dtest-5.0.jar" // trunk is currently 5.0.jar - update when trunk moves
+        ext.dtestJar = System.getenv("DTEST_JAR") ?: "dtest-5.1.jar" // trunk is currently 5.1.jar - update when trunk moves
         println("Using DTest jar: ${ext.dtestJar}")
-        testImplementation(files("dtest-jars/${ext.dtestJar}"))
+        testImplementation(files("${dtestJarLocation}${ext.dtestJar}"))
         testImplementation("org.apache.cassandra:dtest-api:0.0.15")
         // Needed by the Cassandra dtest framework
         testImplementation("org.junit.vintage:junit-vintage-engine:${junitVersion}")
@@ -72,6 +66,7 @@ project(':cassandra-analytics-integration-tests') {
 
 
     test {
+        systemProperty "cassandra.test.dtest_jar_path", dtestJarLocation
         minHeapSize = '1024m'
         maxHeapSize = '3072m'
         maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)

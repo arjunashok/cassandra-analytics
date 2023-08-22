@@ -44,6 +44,8 @@ println("Spark version: ${ext.sparkLabel}")
 ext.jdkLabel = System.getenv("JDK_VERSION") ?: "${analyticsJDKLevel}"
 println("Java source/target compatibility level: ${ext.jdkLabel}")
 
+ext.dtestJarLocation = "${rootDir}/dependencies/"
+
 def profile = "profiles/scala-${ext.scalaLabel}-spark-${ext.sparkLabel}-jdk-${ext.jdkLabel}.gradle"
 if (!file(profile).exists()) {
   throw new InvalidUserDataException("Profile ${profile} does not exist, which indicates this combination of Scala, Spark, and Java is unsupported.\n" +
@@ -75,7 +77,8 @@ tasks.idea.dependsOn(tasks.copyInspections)
 
 tasks.register('buildIgnoreRatList', Exec) {
   description 'Builds a list of ignored files for the rat task from the unversioned git files'
-  commandLine 'bash', '-c', 'git clean --force -d --dry-run -x | cut -c 14-'
+  commandLine 'bash', '-c', 'git clean --force -d --dry-run -x | grep -v "Would skip" | cut -c 14- && ' +
+          'git clean --force -d --dry-run -x | grep "Would skip" | cut -c 23-\n'
   doFirst {
     standardOutput new FileOutputStream(".rat-excludes.txt")
   }
@@ -163,8 +166,15 @@ subprojects {
 
   repositories {
     mavenCentral()
+      mavenLocal {
+        url Paths.get(rootDir.toString(), 'dependencies')
+        content {
+          includeModule("org.apache.cassandra", "cassandra-sidecar")
+          includeGroup("org.apache.cassandra.sidecar")
+        }
+    }
     // uncomment the line below for local development
-    mavenLocal()
+    // mavenLocal()
   }
 
   dependencies {

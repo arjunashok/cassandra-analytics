@@ -104,3 +104,6 @@ cassandra-analytics-integration-tests/dtest-jars
 
 # Built by the build - ignore
 .rat-excludes.txt
+dependencies/
+scripts/target/
+scripts/dependency-reduced-pom.xml

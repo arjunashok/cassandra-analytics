@@ -16,12 +16,28 @@
 # under the License.
 
 version: 2.1
-
+commands:
+  install_common:
+    steps:
+      - run: sudo apt-get update
+        # Somehow, the certs alreeady installed in the java 11 image are installed strangely
+        # in that there's a directory called `cacerts` with a symlink in it named `cacerts`
+        # (/etc/ssl/certs/java/cacerts/cacerts) rather than just a symlink to
+        # `cacerts` in the /etc/ssl/certs/java directory - if this is the case, fix it by
+        # moving it down a directory and then ant should install cleanly
+      - run: |
+          if [ -f /etc/ssl/certs/java/cacerts/cacerts ]; then
+              sudo mv /etc/ssl/certs/java/cacerts/ /etc/ssl/certs/java/cacerts-old
+              sudo mv /etc/ssl/certs/java/cacerts-old/cacerts /etc/ssl/certs/java/
+              sudo rmdir /etc/ssl/certs/java/cacerts-old
+          fi
+      - run: sudo apt-get install ant
 jobs:
   cassandra-analytics-core-spark2-2_11-jdk8:
     docker:
       - image: cimg/openjdk:8.0
     steps:
+      - install_common
       - checkout
       - run:
           name: Build and test against Spark 2 Scala 2.11 JDK8
@@ -41,6 +57,7 @@ jobs:
     docker:
       - image: cimg/openjdk:8.0
     steps:
+      - install_common
       - checkout
       - run:
           name: Build and test against Spark 2 Scala 2.12 JDK8
@@ -60,6 +77,7 @@ jobs:
     docker:
       - image: cimg/openjdk:11.0
     steps:
+      - install_common
       - checkout
       - run:
           name: Build and test against Spark 3 Scala 2.12 JDK11
@@ -79,6 +97,7 @@ jobs:
     docker:
       - image: cimg/openjdk:11.0
     steps:
+      - install_common
       - checkout
       - run:
           name: Build and test against Spark 3 Scala 2.13 JDK11

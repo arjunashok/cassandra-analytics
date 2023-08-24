@@ -62,8 +62,8 @@ jobs:
       - run:
           name: Build and test against Spark 2 Scala 2.12 JDK8
           command: |
-            ./scripts/build-dependencies.sh
-            ./gradlew --stacktrace clean assemble check
+            BRANCHES="cassandra-4.0 cassandra4.1" ./scripts/build-dependencies.sh
+            DTEST_JAR=dtest-4.1.jar ./gradlew --stacktrace clean assemble check
           environment:
             SPARK_VERSION: "2"
             SCALA_VERSION: "2.12"
@@ -82,7 +82,7 @@ jobs:
       - run:
           name: Build and test against Spark 3 Scala 2.12 JDK11
           command: |
-            ./scripts/build-dependencies.sh
+            CASSANDRA_USE_JDK11=true ./scripts/build-dependencies.sh
             ./gradlew --stacktrace clean assemble check
           environment:
             SPARK_VERSION: "3"
@@ -102,7 +102,7 @@ jobs:
       - run:
           name: Build and test against Spark 3 Scala 2.13 JDK11
           command: |
-            ./scripts/build-dependencies.sh
+            CASSANDRA_USE_JDK11=true ./scripts/build-dependencies.sh
             ./gradlew --stacktrace clean assemble check
           environment:
             SPARK_VERSION: "3"

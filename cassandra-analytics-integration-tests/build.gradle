@@ -19,10 +19,16 @@
 
 project(':cassandra-analytics-integration-tests') {
     apply(plugin: 'java-library')
-
+    configurations {
+        configureEach {
+            resolutionStrategy {
+                force("com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}")
+            }
+        }
+    }
     dependencies {
-        testImplementation(group: "${sparkGroupId}", name: "spark-core_${scalaMajorVersion}", version: "${project.rootProject.sparkVersion}")
-        testImplementation(group: "${sparkGroupId}", name: "spark-sql_${scalaMajorVersion}", version: "${project.rootProject.sparkVersion}")
+        testImplementation(group: "${sparkGroupId}", name: "spark-core_${scalaMajorVersion}", version: "${sparkVersion}")
+        testImplementation(group: "${sparkGroupId}", name: "spark-sql_${scalaMajorVersion}", version: "${sparkVersion}")
 
         // JUnit
         testImplementation("org.junit.jupiter:junit-jupiter-api:${project.junitVersion}")
@@ -40,9 +46,11 @@ project(':cassandra-analytics-integration-tests') {
         }
 
         ext.dtestJar = System.getenv("DTEST_JAR") ?: "dtest-5.1.jar" // trunk is currently 5.1.jar - update when trunk moves
-        println("Using DTest jar: ${ext.dtestJar}")
-        testImplementation(files("${dtestJarLocation}${ext.dtestJar}"))
-        testImplementation("org.apache.cassandra:dtest-api:0.0.15")
+
+        def dtestJarFullPath = "${dtestJarLocation}${ext.dtestJar}"
+        println("Using DTest jar: " + dtestJarFullPath)
+        testImplementation(files("${dtestJarFullPath}"))
+        testImplementation("org.apache.cassandra:dtest-api:0.0.16")
         // Needed by the Cassandra dtest framework
         testImplementation("org.junit.vintage:junit-vintage-engine:${junitVersion}")
         testImplementation(project(':cassandra-analytics-core-example'))
@@ -66,7 +74,10 @@ project(':cassandra-analytics-integration-tests') {
 
 
     test {
+        // Because system properties aren't passed from the command line through to tests, we need to specifically
+        // set them again here.
         systemProperty "cassandra.test.dtest_jar_path", dtestJarLocation
+        systemProperty "cassandra.sidecar.versions_to_test", System.getProperty("cassandra.sidecar.versions_to_test")
         minHeapSize = '1024m'
         maxHeapSize = '3072m'
         maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)

@@ -39,7 +39,7 @@ project(':cassandra-analytics-integration-tests') {
         testImplementation(group: 'org.apache.cassandra.sidecar', name: 'common', version: "${sidecarVersion}")
         testImplementation(group: 'org.apache.cassandra.sidecar', name: 'adapters-base', version: "${sidecarVersion}")
         // The server itself
-        testImplementation (group: "org.apache.cassandra", name: "cassandra-sidecar", version: "1.0.0-analytics") {
+        testImplementation (group: "org.apache.cassandra", name: "cassandra-sidecar", version: "${sidecarVersion}") {
             exclude(group: 'org.apache.logging.log4j')
             exclude(group: 'org.slf4j')
             exclude(group: 'ch.qos.logback')

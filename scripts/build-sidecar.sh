@@ -22,14 +22,14 @@ SIDECAR_REPO="${SIDECAR_REPO:-https://github.com/apache/cassandra-sidecar.git}"
 SIDECAR_BRANCH="${SIDECAR_BRANCH:-trunk}"
 SIDECAR_JAR_DIR="$(dirname "${SCRIPT_DIR}/")/dependencies"
 SIDECAR_BUILD_DIR="${SIDECAR_JAR_DIR}/sidecar-build"
-  if [ ! -d "${SIDECAR_BUILD_DIR}" ] ; then
-    git clone --depth 1 --single-branch --branch "${SIDECAR_BRANCH}" "${SIDECAR_REPO}" "${SIDECAR_BUILD_DIR}"
-    git checkout "${SIDECAR_BRANCH}"
-  else
-    pushd "${SIDECAR_BUILD_DIR}"
-    git checkout "${SIDECAR_BRANCH}"
-    git pull
-    popd
-  fi
+  # if [ ! -d "${SIDECAR_BUILD_DIR}" ] ; then
+  #   git clone --depth 1 --single-branch --branch "${SIDECAR_BRANCH}" "${SIDECAR_REPO}" "${SIDECAR_BUILD_DIR}"
+  #   git checkout "${SIDECAR_BRANCH}"
+  # else
+  #   pushd "${SIDECAR_BUILD_DIR}"
+  #   git checkout "${SIDECAR_BRANCH}"
+  #   git pull
+  #   popd
+  # fi
 
 ${SIDECAR_BUILD_DIR}/gradlew --project-dir=${SIDECAR_BUILD_DIR} -Pversion=1.0.0-analytics -Dmaven.repo.local=${SIDECAR_JAR_DIR} publishToMavenLocal

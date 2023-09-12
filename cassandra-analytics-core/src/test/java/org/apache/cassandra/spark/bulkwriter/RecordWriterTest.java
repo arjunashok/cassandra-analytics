@@ -21,6 +21,7 @@ package org.apache.cassandra.spark.bulkwriter;
 
 import java.math.BigInteger;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Range;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,16 +39,20 @@ import org.junit.jupiter.api.io.TempDir;
 
 import org.apache.cassandra.bridge.RowBufferMode;
 import org.apache.cassandra.spark.bulkwriter.token.CassandraRing;
+import org.apache.cassandra.spark.bulkwriter.token.TokenRangeMapping;
 import org.apache.cassandra.spark.common.model.CassandraInstance;
+import org.mockito.Mockito;
 import scala.Tuple2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.when;
 
 public class RecordWriterTest
 {
@@ -58,7 +64,8 @@ public class RecordWriterTest
     @TempDir
     public Path folder; // CHECKSTYLE IGNORE: Public mutable field for parameterized testing
 
-    private CassandraRing<RingInstance> ring;
+    private CassandraRing ring;
+    private TokenRangeMapping tokenRangeMapping;
     private RecordWriter rw;
     private MockTableWriter tw;
     private Tokenizer tokenizer;
@@ -69,25 +76,43 @@ public class RecordWriterTest
     @BeforeEach
     public void setUp()
     {
-        tw = new MockTableWriter(folder);
-        ring = RingUtils.buildRing(0, "DC1", "test", 12);
-        writerContext = new MockBulkWriterContext(ring);
+        tw = new MockTableWriter(folder.getRoot());
+        ring = RingUtils.buildRing(ImmutableMap.of("DC1", 3), "test");
+        tokenRangeMapping = RingUtils.buildTokenRangeMapping(100000, ImmutableMap.of("DC1", 3), 12);
+        writerContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         tc = new TestTaskContext();
         range = writerContext.job().getTokenPartitioner().getTokenRange(tc.partitionId());
         tokenizer = new Tokenizer(writerContext);
     }
 
     @Test
-    public void testSuccessfulWrite()
+    public void testSuccessfulWriteNew()
     {
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
         validateSuccessfulWrite(writerContext, data, COLUMN_NAMES);
     }
 
     @Test
+    public void testSuccessfulWrite()
+    {
+//        validateSuccessfulWrite(writerContext, data, COLUMN_NAMES);
+        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
+        Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
+        rw.write(data);
+        Map<CassandraInstance, List<UploadRequest>> uploads = writerContext.getUploads();
+        assertThat(uploads.keySet().size(), is(REPLICA_COUNT));  // Should upload to 3 replicas
+        assertThat(uploads.values().stream().mapToInt(List::size).sum(), is(REPLICA_COUNT * FILES_PER_SSTABLE * UPLOADED_TABLES));
+        List<UploadRequest> requests = uploads.values().stream().flatMap(List::stream).collect(Collectors.toList());
+        for (UploadRequest ur : requests)
+        {
+            assertNotNull(ur.fileHash);
+        }
+    }
+
+    @Test
     public void testWriteWithConstantTTL()
     {
-        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring);
+        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, false, false);
         validateSuccessfulWrite(bulkWriterContext, data, COLUMN_NAMES);
     }
@@ -95,7 +120,7 @@ public class RecordWriterTest
     @Test
     public void testWriteWithTTLColumn()
     {
-        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring);
+        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, true, false);
         String[] columnNamesWithTtl = {"id", "date", "course", "marks", "ttl"};
         validateSuccessfulWrite(bulkWriterContext, data, columnNamesWithTtl);
@@ -104,7 +129,7 @@ public class RecordWriterTest
     @Test
     public void testWriteWithConstantTimestamp()
     {
-        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring);
+        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, false, false);
         validateSuccessfulWrite(bulkWriterContext, data, COLUMN_NAMES);
     }
@@ -112,7 +137,7 @@ public class RecordWriterTest
     @Test
     public void testWriteWithTimestampColumn()
     {
-        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring);
+        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, false, true);
         String[] columnNamesWithTimestamp = {"id", "date", "course", "marks", "timestamp"};
         validateSuccessfulWrite(bulkWriterContext, data, columnNamesWithTimestamp);
@@ -121,10 +146,97 @@ public class RecordWriterTest
     @Test
     public void testWriteWithTimestampAndTTLColumn()
     {
-        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring);
+        MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, true, true);
         String[] columnNames = {"id", "date", "course", "marks", "ttl", "timestamp"};
         validateSuccessfulWrite(bulkWriterContext, data, columnNames);
+    }
+
+    @Test
+    public void testWriteWithSubRanges()
+    {
+        MockBulkWriterContext m = Mockito.spy(writerContext);
+        TokenPartitioner mtp = Mockito.mock(TokenPartitioner.class);
+        when(m.job().getTokenPartitioner()).thenReturn(mtp);
+
+        // Override partition's token range to span across ranges to force a split into sub-ranges
+        Range<BigInteger> overlapRange = Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(200000));
+        when(mtp.getTokenRange(anyInt())).thenReturn(overlapRange);
+
+        rw = new RecordWriter(m, COLUMN_NAMES, () -> tc, SSTableWriter::new);
+        Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
+        List<StreamResult> res = rw.write(data);
+        assertEquals(1, res.size());
+        assertFalse(overlapRange.equals(res.get(0).tokenRange));
+        final Map<CassandraInstance, List<UploadRequest>> uploads = m.getUploads();
+        // Should upload to 3 replicas
+        assertEquals(uploads.keySet().size(), REPLICA_COUNT);
+        assertThat(uploads.values().stream().mapToInt(List::size).sum(), is(REPLICA_COUNT * FILES_PER_SSTABLE * UPLOADED_TABLES));
+        List<UploadRequest> requests = uploads.values().stream().flatMap(List::stream).collect(Collectors.toList());
+        for (UploadRequest ur : requests)
+        {
+            assertNotNull(ur.fileHash);
+        }
+    }
+
+    @Test
+    public void testWriteWithSubRanges2()
+    {
+        MockBulkWriterContext m = Mockito.spy(writerContext);
+        TokenPartitioner mtp = Mockito.mock(TokenPartitioner.class);
+        when(m.job().getTokenPartitioner()).thenReturn(mtp);
+        // Override partition's token range to span across ranges to force a split into sub-ranges
+        Range<BigInteger> overlapRange = Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(200000));
+        when(mtp.getTokenRange(anyInt())).thenReturn(overlapRange);
+        rw = new RecordWriter(m, COLUMN_NAMES, () -> tc, SSTableWriter::new);
+        int numRows = 3;
+        // There should be 2 SSTables since the data rows across 2 batches (0-indexed)
+        int numSSTables = (int) Math.ceil((float) numRows / (writerContext.getSstableBatchSize()));
+
+        // Generate rows with specific token values that belong to the second sub-range
+        Iterator<Tuple2<DecoratedKey, Object[]>> data = generateCustomData(numRows, 100001);
+        List<StreamResult> res = rw.write(data);
+        assertEquals(1, res.size());
+        assertFalse(overlapRange.equals(res.get(0).tokenRange));
+        final Map<CassandraInstance, List<UploadRequest>> uploads = m.getUploads();
+        // Should upload to 3 replicas
+        assertEquals(REPLICA_COUNT, uploads.keySet().size());
+        assertEquals(REPLICA_COUNT * FILES_PER_SSTABLE * numSSTables, uploads.values().stream().mapToInt(List::size).sum());
+        List<UploadRequest> requests = uploads.values().stream().flatMap(List::stream).collect(Collectors.toList());
+        for (UploadRequest ur : requests)
+        {
+            assertNotNull(ur.fileHash);
+        }
+    }
+
+    @Test
+    public void testWriteWithTokensAcrossSubRanges()
+    {
+        MockBulkWriterContext m = Mockito.spy(writerContext);
+        TokenPartitioner mtp = Mockito.mock(TokenPartitioner.class);
+        when(m.job().getTokenPartitioner()).thenReturn(mtp);
+        // Override partition's token range to span across ranges to force a split into sub-ranges
+        Range<BigInteger> overlapRange = Range.closed(BigInteger.valueOf(-9223372036854775808L), BigInteger.valueOf(200000));
+        when(mtp.getTokenRange(anyInt())).thenReturn(overlapRange);
+        rw = new RecordWriter(m, COLUMN_NAMES, () -> tc, SSTableWriter::new);
+        int numRows = 3;
+        Iterator<Tuple2<DecoratedKey, Object[]>> data = generateCustomData(numRows, 99999);
+        List<StreamResult> res = rw.write(data);
+        // We expect 2 streams since rows belong to different sub-ranges
+        assertEquals(2, res.size());
+        assertFalse(overlapRange.equals(res.get(0).tokenRange));
+        final Map<CassandraInstance, List<UploadRequest>> uploads = m.getUploads();
+        // Should upload to 3 replicas
+        assertEquals((REPLICA_COUNT + 1), uploads.keySet().size());
+
+        // There are a total of 2 SSTable files - One for each sub-range
+        // Although the replica-sets for each file were different they will still be 3 for each subrange
+        assertEquals(REPLICA_COUNT * FILES_PER_SSTABLE * 2, uploads.values().stream().mapToInt(List::size).sum());
+        List<UploadRequest> requests = uploads.values().stream().flatMap(List::stream).collect(Collectors.toList());
+        for (UploadRequest ur : requests)
+        {
+            assertNotNull(ur.fileHash);
+        }
     }
 
     @Test
@@ -132,20 +244,20 @@ public class RecordWriterTest
     {
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw.setOutDir(path), path));
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
-        // TODO: Add better error handling with human-readable exception messages in SSTableReader::new
-        // That way we can assert on the exception thrown here
+//        // TODO: Add better error handling with human-readable exception messages in SSTableReader::new
+//        // That way we can assert on the exception thrown here
         RuntimeException ex = assertThrows(RuntimeException.class, () -> rw.write(data));
     }
 
     @Test
     public void testWriteWithOutOfRangeTokenFails()
     {
+//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, false);
         RuntimeException ex = assertThrows(RuntimeException.class, () -> rw.write(data));
-        assertThat(ex.getMessage(),
-                   matchesPattern("java.lang.IllegalStateException: Received Token "
-                                  + "5765203080415074583 outside of expected range \\[-9223372036854775808(‥|..)0]"));
+        assertEquals(ex.getMessage(), "java.lang.IllegalStateException: Received Token "
+                                      + "5765203080415074583 outside of expected range [-9223372036854775808‥100000]");
     }
 
     @Test
@@ -163,6 +275,7 @@ public class RecordWriterTest
     {
         // Mock context returns a 60-minute allowable time skew, so we use something just outside the limits
         long sixtyOneMinutesInMillis = TimeUnit.MINUTES.toMillis(61);
+//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         writerContext.setTimeProvider(() -> System.currentTimeMillis() - sixtyOneMinutesInMillis);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
@@ -176,6 +289,7 @@ public class RecordWriterTest
         // Mock context returns a 60-minute allowable time skew, so we use something just inside the limits
         long fiftyNineMinutesInMillis = TimeUnit.MINUTES.toMillis(59);
         long remoteTime = System.currentTimeMillis() - fiftyNineMinutesInMillis;
+//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
         writerContext.setTimeProvider(() -> remoteTime);  // Return a very low "current time" to make sure we fail if skew is too bad
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
@@ -265,5 +379,20 @@ public class RecordWriterTest
                                 .iterator();
         }
         return limitedStream.iterator();
+    }
+
+    private Iterator<Tuple2<DecoratedKey, Object[]>> generateCustomData(int numValues, int start)
+    {
+        List<Tuple2<DecoratedKey, Object[]>> res = new ArrayList<>();
+        int index = start;
+        for (int i = 0; i < numValues; i++)
+        {
+            final Object[] columns = {index, index, "foo" + index, index };
+            DecoratedKey dKey = tokenizer.getDecoratedKey(columns);
+            res.add(Tuple2.apply(new DecoratedKey(BigInteger.valueOf(index), dKey.getKey()), columns));
+            index++;
+        }
+
+        return res.stream().iterator();
     }
 }

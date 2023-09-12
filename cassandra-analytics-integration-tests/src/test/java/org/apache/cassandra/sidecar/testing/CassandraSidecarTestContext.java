@@ -37,6 +37,7 @@ import org.apache.cassandra.sidecar.cluster.InstancesConfigImpl;
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadataImpl;
 import org.apache.cassandra.sidecar.common.CQLSessionProvider;
+import org.apache.cassandra.sidecar.common.CassandraAdapterDelegate;
 import org.apache.cassandra.sidecar.common.CassandraVersionProvider;
 import org.apache.cassandra.sidecar.common.JmxClient;
 import org.apache.cassandra.sidecar.common.SimpleCassandraVersion;
@@ -214,6 +215,11 @@ public class CassandraSidecarTestContext implements AutoCloseable
             JmxClient jmxClient = new JmxClient(hostName, config.jmxPort());
             this.jmxClients.add(jmxClient);
 
+            CassandraAdapterDelegate delegate = new CassandraAdapterDelegate(versionProvider,
+                                                                             sessionProvider,
+                                                                             jmxClient,
+                                                                             "1.0-TEST");
+
             String[] dataDirectories = (String[]) config.get("data_file_directories");
             // Use the parent of the first data directory as the staging directory
             Path dataDirParentPath = Paths.get(dataDirectories[0]).getParent();
@@ -221,15 +227,14 @@ public class CassandraSidecarTestContext implements AutoCloseable
             assertThat(dataDirParentPath).isNotNull();
             Path stagingPath = dataDirParentPath.resolve("staging");
             String uploadsStagingDirectory = stagingPath.toFile().getAbsolutePath();
-            metadata.add(new InstanceMetadataImpl(i + 1,
-                                                  config.broadcastAddress().getAddress().getHostAddress(),
-                                                  nativeTransportPort,
-                                                  Arrays.asList(dataDirectories),
-                                                  uploadsStagingDirectory,
-                                                  sessionProvider,
-                                                  jmxClient,
-                                                  versionProvider,
-                                                  "1.0-TEST"));
+            metadata.add(InstanceMetadataImpl.builder()
+                         .id(i + 1)
+                         .host(config.broadcastAddress().getAddress().getHostAddress())
+                         .port(nativeTransportPort)
+                         .dataDirs(Arrays.asList(dataDirectories))
+                         .stagingDir(uploadsStagingDirectory)
+                         .delegate(delegate)
+                         .build());
         }
         return new InstancesConfigImpl(metadata, dnsResolver);
     }

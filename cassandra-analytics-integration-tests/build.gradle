@@ -26,6 +26,11 @@ project(':cassandra-analytics-integration-tests') {
             }
         }
     }
+
+    repositories {
+//        mavenCentral()
+    }
+
     dependencies {
         testImplementation(group: "${sparkGroupId}", name: "spark-core_${scalaMajorVersion}", version: "${sparkVersion}")
         testImplementation(group: "${sparkGroupId}", name: "spark-sql_${scalaMajorVersion}", version: "${sparkVersion}")
@@ -77,7 +82,7 @@ project(':cassandra-analytics-integration-tests') {
         // Because system properties aren't passed from the command line through to tests, we need to specifically
         // set them again here.
         systemProperty "cassandra.test.dtest_jar_path", dtestJarLocation
-        systemProperty "cassandra.sidecar.versions_to_test", System.getProperty("cassandra.sidecar.versions_to_test")
+//        systemProperty "cassandra.sidecar.versions_to_test", System.getProperty("cassandra.sidecar.versions_to_test")
         minHeapSize = '1024m'
         maxHeapSize = '3072m'
         maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)

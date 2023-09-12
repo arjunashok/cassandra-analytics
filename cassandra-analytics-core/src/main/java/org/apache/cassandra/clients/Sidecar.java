@@ -37,7 +37,8 @@ import o.a.c.sidecar.client.shaded.io.vertx.core.VertxOptions;
 import org.apache.cassandra.secrets.SecretsProvider;
 import org.apache.cassandra.sidecar.client.HttpClientConfig;
 import org.apache.cassandra.sidecar.client.SidecarClient;
-import org.apache.cassandra.sidecar.client.SidecarConfig;
+import org.apache.cassandra.sidecar.client.SidecarClientConfig;
+import org.apache.cassandra.sidecar.client.SidecarClientConfigImpl;
 import org.apache.cassandra.sidecar.client.SidecarInstance;
 import org.apache.cassandra.sidecar.client.SidecarInstancesProvider;
 import org.apache.cassandra.sidecar.client.VertxHttpClient;
@@ -102,13 +103,13 @@ public final class Sidecar
 
         HttpClientConfig httpClientConfig = builder.build();
 
-        SidecarConfig sidecarConfig = new SidecarConfig.Builder()
-                                      .maxRetries(config.maxRetries())
-                                      .retryDelayMillis(config.millisToSleep())
-                                      .maxRetryDelayMillis(config.maxMillisToSleep())
-                                      .build();
+        SidecarClientConfig sidecarConfig = SidecarClientConfigImpl.builder()
+                                                                   .maxRetries(config.maxRetries())
+                                                                   .retryDelayMillis(config.millisToSleep())
+                                                                   .maxRetryDelayMillis(config.maxMillisToSleep())
+                                                                   .build();
 
-        return buildClient(sidecarConfig, vertx, httpClientConfig, sidecarInstancesProvider);
+        return buildClient((SidecarClientConfigImpl) sidecarConfig, vertx, httpClientConfig, sidecarInstancesProvider);
     }
 
     public static SidecarClient from(SidecarInstancesProvider sidecarInstancesProvider, BulkSparkConf conf)
@@ -129,16 +130,15 @@ public final class Sidecar
                                             .ssl(conf.hasKeystoreAndKeystorePassword())
                                             .build();
 
-        SidecarConfig sidecarConfig = new SidecarConfig.Builder()
-                                      .maxRetries(5)
-                                      .retryDelayMillis(200)
-                                      .maxRetryDelayMillis(500)
-                                      .build();
-
-        return buildClient(sidecarConfig, vertx, httpClientConfig, sidecarInstancesProvider);
+        SidecarClientConfig sidecarConfig = SidecarClientConfigImpl.builder()
+                                                                       .maxRetries(5)
+                                                                       .retryDelayMillis(200)
+                                                                       .maxRetryDelayMillis(500)
+                                                                       .build();
+        return buildClient((SidecarClientConfigImpl) sidecarConfig, vertx, httpClientConfig, sidecarInstancesProvider);
     }
 
-    public static SidecarClient buildClient(SidecarConfig sidecarConfig,
+    public static SidecarClient buildClient(SidecarClientConfigImpl sidecarConfig,
                                             Vertx vertx,
                                             HttpClientConfig httpClientConfig,
                                             SidecarInstancesProvider clusterConfig)

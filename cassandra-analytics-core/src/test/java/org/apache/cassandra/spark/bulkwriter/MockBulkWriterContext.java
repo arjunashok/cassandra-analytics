@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -41,6 +42,7 @@ import org.apache.cassandra.bridge.RowBufferMode;
 import org.apache.cassandra.sidecar.common.data.TimeSkewResponse;
 import org.apache.cassandra.spark.bulkwriter.token.CassandraRing;
 import org.apache.cassandra.spark.bulkwriter.token.ConsistencyLevel;
+import org.apache.cassandra.spark.bulkwriter.token.TokenRangeMapping;
 import org.apache.cassandra.spark.common.MD5Hash;
 import org.apache.cassandra.spark.common.client.ClientException;
 import org.apache.cassandra.spark.common.client.InstanceState;
@@ -61,6 +63,7 @@ import static org.apache.cassandra.spark.bulkwriter.TableSchemaTestCommon.mockCq
 
 public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, JobInfo, SchemaInfo, DataTransferApi
 {
+    public static final String DEFAULT_CASSANDRA_VERSION = "cassandra-4.0.2";
     private static final long serialVersionUID = -2912371629236770646L;
     private RowBufferMode rowBufferMode = RowBufferMode.UNBUFFERED;
     private ConsistencyLevel.CL consistencyLevel;
@@ -70,39 +73,39 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
     {
     }
 
-    public static final String DEFAULT_CASSANDRA_VERSION = "cassandra-4.0.2";
-
     private final UUID jobId;
     private Supplier<Long> timeProvider = System::currentTimeMillis;
     private boolean skipClean = false;
     public int refreshClusterInfoCallCount = 0;  // CHECKSTYLE IGNORE: Public mutable field
     private final Map<CassandraInstance, List<UploadRequest>> uploads = new HashMap<>();
-    private final Map<CassandraInstance, List<String>> commits = new HashMap<>();
+    private final Map<CassandraInstance, List<String>> commits = new ConcurrentHashMap<>();
     final Pair<StructType, ImmutableMap<String, CqlField.CqlType>> validPair;
     private final TableSchema schema;
     private final Set<CassandraInstance> cleanCalledForInstance = new HashSet<>();
-    private boolean instancesAreAvailable = true;
-    private boolean cleanShouldThrow = false;
-    private final CassandraRing<RingInstance> ring;
+    private final CassandraRing ring;
+    private final TokenRangeMapping<RingInstance> tokenRangeMapping;
     private final TokenPartitioner tokenPartitioner;
     private final String cassandraVersion;
+    private boolean instancesAreAvailable = true;
+    private boolean cleanShouldThrow = false;
     private CommitResultSupplier crSupplier = (uuids, dc) -> new RemoteCommitResult(true, Collections.emptyList(), uuids, null);
-
     private Predicate<CassandraInstance> uploadRequestConsumer = instance -> true;
     private TTLOption ttlOption = TTLOption.forever();
 
-    public MockBulkWriterContext(CassandraRing<RingInstance> ring,
+    public MockBulkWriterContext(CassandraRing ring,
+                                 TokenRangeMapping<RingInstance> tokenRangeMapping,
                                  String cassandraVersion,
                                  ConsistencyLevel.CL consistencyLevel)
     {
         this.ring = ring;
-        this.tokenPartitioner = new TokenPartitioner(ring, 1, 2, 2, false);
+        this.tokenRangeMapping = tokenRangeMapping;
+        this.tokenPartitioner = new TokenPartitioner(tokenRangeMapping, ring, 1, 2, 2, false);
         this.cassandraVersion = cassandraVersion;
         this.consistencyLevel = consistencyLevel;
         validPair = TableSchemaTestCommon.buildMatchedDataframeAndCqlColumns(
-        new String[]{"id", "date", "course", "marks"},
-        new org.apache.spark.sql.types.DataType[]{DataTypes.IntegerType, DataTypes.DateType, DataTypes.StringType, DataTypes.IntegerType},
-        new CqlField.CqlType[]{mockCqlType(INT), mockCqlType(DATE), mockCqlType(VARCHAR), mockCqlType(INT)});
+        new String[]{"id", "date", "course", "marks" },
+        new org.apache.spark.sql.types.DataType[]{DataTypes.IntegerType, DataTypes.DateType, DataTypes.StringType, DataTypes.IntegerType },
+        new CqlField.CqlType[]{mockCqlType(INT), mockCqlType(DATE), mockCqlType(VARCHAR), mockCqlType(INT) });
         StructType validDataFrameSchema = validPair.getKey();
         ImmutableMap<String, CqlField.CqlType> validCqlColumns = validPair.getValue();
         String[] partitionKeyColumns = {"id", "date"};
@@ -121,6 +124,11 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
         this.jobId = java.util.UUID.randomUUID();
     }
 
+    public MockBulkWriterContext(CassandraRing ring, TokenRangeMapping<RingInstance> tokenRangeMapping)
+    {
+        this(ring, tokenRangeMapping, DEFAULT_CASSANDRA_VERSION, ConsistencyLevel.CL.LOCAL_QUORUM);
+    }
+
     public Supplier<Long> getTimeProvider()
     {
         return timeProvider;
@@ -129,11 +137,6 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
     public void setTimeProvider(Supplier<Long> timeProvider)
     {
         this.timeProvider = timeProvider;
-    }
-
-    public MockBulkWriterContext(CassandraRing<RingInstance> ring)
-    {
-        this(ring, DEFAULT_CASSANDRA_VERSION, ConsistencyLevel.CL.LOCAL_QUORUM);
     }
 
     @Override
@@ -243,9 +246,14 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
     }
 
     @Override
-    public CassandraRing<RingInstance> getRing(boolean cached)
+    public CassandraRing getRing(boolean cached)
     {
         return ring;
+    }
+
+    public TokenRangeMapping<RingInstance> getTokenRangeMapping(boolean cached)
+    {
+        return tokenRangeMapping;
     }
 
     @Override
@@ -285,17 +293,15 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
         return cassandraVersion;
     }
 
+    public Map<RingInstance, InstanceAvailability> getInstanceAvailability(boolean cached)
+    {
+        return Collections.emptyMap();
+    }
+
     @Override
     public RemoteCommitResult commitSSTables(CassandraInstance instance, String migrationId, List<String> uuids)
     {
-        commits.compute(instance, (ignored, commitList) -> {
-            if (commitList == null)
-            {
-                commitList = new ArrayList<>();
-            }
-            commitList.add(migrationId);
-            return commitList;
-        });
+        commits.computeIfAbsent(instance, k -> new ArrayList<>()).add(migrationId);
         return crSupplier.apply(buildCompleteBatchIds(uuids), instance.getDataCenter());
     }
 
@@ -336,7 +342,6 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
         }
     }
 
-    @Override
     public Map<RingInstance, InstanceAvailability> getInstanceAvailability()
     {
         return null;
@@ -362,6 +367,11 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
     public void setInstancesAreAvailable(boolean instancesAreAvailable)
     {
         this.instancesAreAvailable = instancesAreAvailable;
+    }
+
+    public int refreshClusterInfoCallCount()
+    {
+        return refreshClusterInfoCallCount;
     }
 
     public List<CassandraInstance> getCleanedInstances()

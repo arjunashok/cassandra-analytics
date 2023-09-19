@@ -34,6 +34,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Range;
 
 import org.apache.cassandra.sidecar.common.data.RingEntry;
+import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse.ReplicaMetadata;
 import org.apache.cassandra.spark.bulkwriter.token.CassandraRing;
 import org.apache.cassandra.spark.bulkwriter.token.RangeUtils;
 import org.apache.cassandra.spark.bulkwriter.token.TokenRangeMapping;
@@ -77,15 +78,24 @@ public final class RingUtils
             return value;
         });
 
+        List<ReplicaMetadata> replicaMetadata = instances.stream().map(i -> new ReplicaMetadata(i.getRingInstance().state(),
+                                                                                       i.getRingInstance().status(),
+                                                                                       i.getNodeName(),
+                                                                                       i.getIpAddress(),
+                                                                                       i.getDataCenter()))
+                                                .collect(Collectors.toList());
+
         Multimap<RingInstance, Range<BigInteger>> tokenRanges = setupTokenRangeMap(Partitioner.Murmur3Partitioner, replicationFactor, instances);
         return new TokenRangeMapping<>(Partitioner.Murmur3Partitioner,
                                        writeReplicas,
                                        Collections.emptyMap(),
                                        tokenRanges,
+                                       replicaMetadata,
                                        Collections.emptySet(),
                                        Collections.emptySet());
     }
 
+    // Used only in tests
     public static Multimap<RingInstance, Range<BigInteger>> setupTokenRangeMap(Partitioner partitioner,
                                                                                ReplicationFactor replicationFactor,
                                                                                List<RingInstance> instances)

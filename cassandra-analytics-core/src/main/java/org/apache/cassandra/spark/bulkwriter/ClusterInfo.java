@@ -39,7 +39,7 @@ public interface ClusterInfo extends Serializable
 
     String getLowestCassandraVersion();
 
-    Map<RingInstance, InstanceAvailability> getInstanceAvailability(boolean cached);
+    Map<RingInstance, InstanceAvailability> getInstanceAvailability();
 
     boolean instanceIsAvailable(RingInstance ringInstance);
 

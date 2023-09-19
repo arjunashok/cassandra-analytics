@@ -244,8 +244,8 @@ public class RecordWriterTest
     {
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw.setOutDir(path), path));
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
-//        // TODO: Add better error handling with human-readable exception messages in SSTableReader::new
-//        // That way we can assert on the exception thrown here
+        // TODO: Add better error handling with human-readable exception messages in SSTableReader::new
+        // That way we can assert on the exception thrown here
         RuntimeException ex = assertThrows(RuntimeException.class, () -> rw.write(data));
     }
 

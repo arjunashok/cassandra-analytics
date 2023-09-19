@@ -34,6 +34,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.TreeRangeMap;
 
+import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse.ReplicaMetadata;
 import org.apache.cassandra.spark.bulkwriter.RingInstance;
 import org.apache.cassandra.spark.common.model.CassandraInstance;
 import org.apache.cassandra.spark.data.partitioner.Partitioner;
@@ -42,20 +43,19 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
 {
 
     private final Partitioner partitioner;
+
+    private transient Set<RingInstance> blockedInstances;
+    private transient Set<RingInstance> replacementInstances;
     private transient RangeMap<BigInteger, List<Instance>> replicasByTokenRange;
     private transient Multimap<Instance, Range<BigInteger>> tokenRangeMap;
-
     private transient Map<String, Set<String>> writeReplicasByDC;
     private transient Map<String, Set<String>> pendingReplicasByDC;
-
-    // TODO: Exclude blocked instances from writes
-    private transient Set<RingInstance> blockedInstances;
-
-    private transient Set<RingInstance> replacementInstances;
+    private transient List<ReplicaMetadata> replicaMetadata;
     public TokenRangeMapping(final Partitioner partitioner,
                              final Map<String, Set<String>> writeReplicasByDC,
                              final Map<String, Set<String>> pendingReplicasByDC,
                              final Multimap<Instance, Range<BigInteger>> tokenRanges,
+                             final List<ReplicaMetadata> replicaMetadata,
                              final Set<RingInstance> blockedInstances,
                              final Set<RingInstance> replacementInstances)
     {
@@ -63,9 +63,12 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
         this.tokenRangeMap = tokenRanges;
         this.pendingReplicasByDC = pendingReplicasByDC;
         this.writeReplicasByDC = writeReplicasByDC;
-        replicasByTokenRange = TreeRangeMap.create();
+        this.replicaMetadata = replicaMetadata;
         this.blockedInstances = blockedInstances;
         this.replacementInstances = replacementInstances;
+        this.replicaMetadata = replicaMetadata;
+        // Populate reverse mapping of ranges to replicas
+        this.replicasByTokenRange = TreeRangeMap.create();
         populateReplicas();
     }
 
@@ -98,6 +101,11 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
         replicaMap.putAll(mappingsToAdd);
     }
 
+    public List<ReplicaMetadata> getReplicaMetadata()
+    {
+        return replicaMetadata;
+    }
+
     public Set<String> getPendingReplicas()
     {
         return (pendingReplicasByDC == null || pendingReplicasByDC.isEmpty())
@@ -122,14 +130,36 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
                ? Collections.emptySet() : writeReplicasByDC.get(datacenter).stream().collect(Collectors.toSet());
     }
 
-    public Set<RingInstance> getBlockedInstances()
+    public Set<String> getBlockedInstances()
     {
-        return blockedInstances;
+        return blockedInstances.stream()
+                               .map(RingInstance::getIpAddress)
+                               .collect(Collectors.toSet());
+
     }
 
-    public Set<RingInstance> getReplacementInstances()
+    public Set<String> getBlockedInstances(String datacenter)
     {
-        return replacementInstances;
+        return blockedInstances.stream()
+                                   .filter(r -> r.getDataCenter().equalsIgnoreCase(datacenter))
+                                   .map(RingInstance::getIpAddress)
+                                   .collect(Collectors.toSet());
+    }
+
+
+    public Set<String> getReplacementInstances()
+    {
+        return replacementInstances.stream()
+                                   .map(RingInstance::getIpAddress)
+                                   .collect(Collectors.toSet());
+    }
+
+    public Set<String> getReplacementInstances(String datacenter)
+    {
+        return replacementInstances.stream()
+                                   .filter(r -> r.getDataCenter().equalsIgnoreCase(datacenter))
+                                   .map(RingInstance::getIpAddress)
+                                   .collect(Collectors.toSet());
     }
 
     // Used for writes

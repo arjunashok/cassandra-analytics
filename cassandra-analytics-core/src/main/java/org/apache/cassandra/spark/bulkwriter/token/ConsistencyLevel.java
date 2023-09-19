@@ -29,7 +29,6 @@ import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.spark.bulkwriter.RingInstance;
 import org.apache.cassandra.spark.common.model.CassandraInstance;
 import org.apache.cassandra.spark.data.ReplicationFactor;
 
@@ -97,12 +96,7 @@ public interface ConsistencyLevel
 
                 for (final String dataCenter : ring.getReplicationFactor().getOptions().keySet())
                 {
-                    Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                        .stream()
-                                                                        .filter(inst -> inst.getDataCenter().matches(dataCenter))
-                                                                        .map(RingInstance::getIpAddress)
-                                                                        .collect(Collectors.toSet());
-
+                    Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances(dataCenter);
                     Set<String> dcFailedInstances = failedInsts.stream()
                                                                .filter(inst -> inst.getDataCenter().matches(dataCenter))
                                                                .map(CassandraInstance::getIpAddress)
@@ -112,12 +106,9 @@ public interface ConsistencyLevel
                                                                                              dcReplacingInstances,
                                                                                              dcFailedInstances);
 
-                    long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances()
-                                                                    .stream()
-                                                                    .filter(inst -> inst.getDataCenter().matches(dataCenter))
-                                                                    .count();
+                    long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances(dataCenter).size();
 
-                    if ((dcFailedInstances.size()) > (dcWriteReplicaCount - (dcWriteReplicaCount / 2 + 1)))
+                    if ((dcFailedInstances.size() + dcBlockedInstancesCount) > (dcWriteReplicaCount - (dcWriteReplicaCount / 2 + 1)))
                     {
                         return false;
                     }
@@ -141,11 +132,7 @@ public interface ConsistencyLevel
                                             final Collection<? extends CassandraInstance> failedInsts,
                                             final String localDC)
             {
-                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                  .stream()
-                                                                  .map(RingInstance::getIpAddress)
-                                                                  .collect(Collectors.toSet());
-
+                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances();
                 Set<String> failedInstanceIPs = failedInsts.stream().map(CassandraInstance::getIpAddress).collect(Collectors.toSet());
                 final long writeReplicaCount = maybeUpdateWriteReplicasForReplacements(tokenRangeMapping.getWriteReplicas(),
                                                                                        replacingInstances,
@@ -175,17 +162,9 @@ public interface ConsistencyLevel
                                                            .map(CassandraInstance::getIpAddress)
                                                            .collect(Collectors.toSet());
 
-                long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances()
-                                                                .stream()
-                                                                .filter(inst -> inst.getDataCenter().matches(localDC))
-                                                                .count();
+                long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances(localDC).size();
 
-                Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                    .stream()
-                                                                    .filter(inst -> inst.getDataCenter().matches(localDC))
-                                                                    .map(RingInstance::getIpAddress)
-                                                                    .collect(Collectors.toSet());
-
+                Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances(localDC);
                 final long dcWriteReplicaCount = maybeUpdateWriteReplicasForReplacements(tokenRangeMapping.getWriteReplicas(localDC),
                                                                                          dcReplacingInstances,
                                                                                          dcFailedInstances);
@@ -206,10 +185,8 @@ public interface ConsistencyLevel
                                             final Collection<? extends CassandraInstance> failedInsts,
                                             final String localDC)
             {
-                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                  .stream()
-                                                                  .map(RingInstance::getIpAddress)
-                                                                  .collect(Collectors.toSet());
+                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances();
+
                 Set<String> failedInstanceIPs = failedInsts.stream().map(CassandraInstance::getIpAddress).collect(Collectors.toSet());
 
                 final long writeReplicaCount = maybeUpdateWriteReplicasForReplacements(tokenRangeMapping.getWriteReplicas(),
@@ -233,11 +210,7 @@ public interface ConsistencyLevel
                                             final Collection<? extends CassandraInstance> failedInsts,
                                             final String localDC)
             {
-                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                  .stream()
-                                                                  .map(RingInstance::getIpAddress)
-                                                                  .collect(Collectors.toSet());
-
+                Set<String> replacingInstances = tokenRangeMapping.getReplacementInstances();
                 Set<String> failedInstanceIPs = failedInsts.stream().map(CassandraInstance::getIpAddress).collect(Collectors.toSet());
 
                 final long writeReplicaCount = maybeUpdateWriteReplicasForReplacements(tokenRangeMapping.getWriteReplicas(),
@@ -268,16 +241,8 @@ public interface ConsistencyLevel
                                                            .filter(inst -> inst.getDataCenter().matches(localDC))
                                                            .map(CassandraInstance::getIpAddress)
                                                            .collect(Collectors.toSet());
-                long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances()
-                                                                .stream()
-                                                                .filter(inst -> inst.getDataCenter().matches(localDC))
-                                                                .count();
-                Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances()
-                                                                    .stream()
-                                                                    .filter(inst -> inst.getDataCenter().matches(localDC))
-                                                                    .map(RingInstance::getIpAddress)
-                                                                    .collect(Collectors.toSet());
-
+                long dcBlockedInstancesCount = tokenRangeMapping.getBlockedInstances(localDC).size();
+                Set<String> dcReplacingInstances = tokenRangeMapping.getReplacementInstances(localDC);
                 // TODO: Ensure quorum in non-pending replica-set while writing
                 final long dcWriteReplicaCount = maybeUpdateWriteReplicasForReplacements(tokenRangeMapping.getWriteReplicas(localDC),
                                                                                          dcReplacingInstances,
@@ -296,31 +261,5 @@ public interface ConsistencyLevel
             }
             return writeReplicas.size();
         }
-
-        // 3 write replicas
-        // 1 replacement
-        // Failed = 1; replacement
-        // 3 WRS
-
-        // 3 write replicas
-        // 1 replacement
-        // Failed = 1; Non-replacement node
-        // Quorum 3 write replicas
-        // Remove successful replacement node from count => WRS = 2
-        // Quorum: 2/2+1 = 2
-        // Tolerance: 2 - 2 = 0
-        // 1 failure = > NOT consistent
-
-// RF = 3/2 + 1 = 2; Tolerance = 3 - 2 = 1
-// When replacing, RF = 2/2 + 1 = 2
-
-        // replacement nodes
-        // - removed node fails to go away
-        // - joining node fails to join
-
-
-
-
-
     }
 }

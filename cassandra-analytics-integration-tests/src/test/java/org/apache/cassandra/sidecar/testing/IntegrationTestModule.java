@@ -29,18 +29,10 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import org.apache.cassandra.sidecar.cluster.InstancesConfig;
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
-import org.apache.cassandra.sidecar.config.SSTableImportConfiguration;
-import org.apache.cassandra.sidecar.config.SSTableUploadConfiguration;
-import org.apache.cassandra.sidecar.config.ServiceConfiguration;
 import org.apache.cassandra.sidecar.config.SidecarConfiguration;
-import org.apache.cassandra.sidecar.config.ThrottleConfiguration;
 import org.apache.cassandra.sidecar.config.WorkerPoolConfiguration;
-import org.apache.cassandra.sidecar.config.yaml.CacheConfigurationImpl;
-import org.apache.cassandra.sidecar.config.yaml.SSTableImportConfigurationImpl;
-import org.apache.cassandra.sidecar.config.yaml.SSTableUploadConfigurationImpl;
 import org.apache.cassandra.sidecar.config.yaml.ServiceConfigurationImpl;
 import org.apache.cassandra.sidecar.config.yaml.SidecarConfigurationImpl;
-import org.apache.cassandra.sidecar.config.yaml.ThrottleConfigurationImpl;
 import org.apache.cassandra.sidecar.config.yaml.WorkerPoolConfigurationImpl;
 
 /**

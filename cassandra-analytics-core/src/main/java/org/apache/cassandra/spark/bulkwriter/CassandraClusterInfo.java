@@ -23,17 +23,14 @@ import java.io.Closeable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -52,10 +49,11 @@ import org.apache.cassandra.sidecar.client.SidecarInstanceImpl;
 import org.apache.cassandra.sidecar.common.NodeSettings;
 import org.apache.cassandra.sidecar.common.data.GossipInfoResponse;
 import org.apache.cassandra.sidecar.common.data.RingEntry;
-import org.apache.cassandra.sidecar.common.data.RingResponse;
 import org.apache.cassandra.sidecar.common.data.SchemaResponse;
 import org.apache.cassandra.sidecar.common.data.TimeSkewResponse;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
+import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse.ReplicaInfo;
+import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse.ReplicaMetadata;
 import org.apache.cassandra.spark.bulkwriter.token.CassandraRing;
 import org.apache.cassandra.spark.bulkwriter.token.TokenRangeMapping;
 import org.apache.cassandra.spark.common.client.InstanceState;
@@ -79,7 +77,6 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
     protected transient TokenRangeMapping<RingInstance> tokenRangeReplicas;
     protected  transient Map<RingInstance, InstanceAvailability> availability;
     protected transient String keyspaceSchema;
-    protected transient volatile RingResponse ringResponse;
     protected transient GossipInfoResponse gossipInfo;
     protected transient CassandraContext cassandraContext;
     protected final transient AtomicReference<NodeSettings> nodeSettings;
@@ -224,7 +221,6 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         synchronized (this)
         {
             // Set backing stores to null and let them lazy-load on the next call
-            ringResponse = null;
             gossipInfo = null;
             keyspaceSchema = null;
             getCassandraContext().refreshClusterConfig();
@@ -296,6 +292,11 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         }
     }
 
+    /**
+     * Fetch the (optionally cached) ring metadata including replication factor and partitioner
+     * @param cached
+     * @return CassandraRing holder for ring metadata
+     */
     @Override
     public CassandraRing getRing(boolean cached)
     {
@@ -377,39 +378,15 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
     }
 
     @Override
-    public Map<RingInstance, InstanceAvailability> getInstanceAvailability(boolean cached)
+    public Map<RingInstance, InstanceAvailability> getInstanceAvailability()
     {
-        Map<RingInstance, InstanceAvailability> availability = this.availability;
-        if (cached && availability != null)
-        {
-            return availability;
-        }
+        TokenRangeMapping<RingInstance> mapping = getTokenRangeMapping(true);
+        final Map<RingInstance, InstanceAvailability> result =
+        mapping.getReplicaMetadata()
+               .stream()
+               .map(RingInstance::new)
+               .collect(Collectors.toMap(Function.identity(), this::determineInstanceAvailability));
 
-        synchronized (this)
-        {
-            if (!cached || availability == null)
-            {
-                try
-                {
-                    availability = getInstanceAvailabilityFromRing();
-                }
-                catch (Exception exception)
-                {
-                    throw new RuntimeException("Unable to initialize ring information", exception);
-                }
-            }
-            return availability;
-        }
-    }
-
-    private Map<RingInstance, InstanceAvailability> getInstanceAvailabilityFromRing()
-    {
-        RingResponse ringResp = getRingResponse();
-        final Map<RingInstance, InstanceAvailability> result = ringResp.stream()
-                                                                       .map(RingInstance::new)
-                                                                       .collect(
-                                                                       Collectors.toMap(Function.identity(),
-                                                                                        this::determineInstanceAvailability));
         if (LOGGER.isDebugEnabled())
         {
             result.forEach((inst, avail) -> LOGGER.debug("Instance {} has availability {}", inst, avail));
@@ -422,10 +399,6 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         if (!instanceIsUp(instance.getRingInstance()))
         {
             return InstanceAvailability.UNAVAILABLE_DOWN;
-        }
-        if (instanceIsJoining(instance.getRingInstance()) && isReplacement(instance))
-        {
-            return InstanceAvailability.UNAVAILABLE_REPLACEMENT;
         }
         if (instanceIsBlocked(instance))
         {
@@ -445,36 +418,40 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
     {
         final Map<String, Set<String>> writeReplicasByDC;
         final Map<String, Set<String>> pendingReplicasByDC;
+        final List<ReplicaMetadata> replicaMetadata;
         final Set<RingInstance> blockedInstances;
         final Set<RingInstance> replacementInstances;
         Multimap<RingInstance, Range<BigInteger>> tokenRangesByInstance;
         try
         {
             TokenRangeReplicasResponse response = getTokenRangesAndReplicaSets();
+            replicaMetadata = response.replicaMetadata();
 
-            tokenRangesByInstance = getTokenRangesByInstance(response.writeReplicas());
+            tokenRangesByInstance = getTokenRangesByInstance(response.writeReplicas(), response.replicaMetadata());
             LOGGER.info("Retrieved token ranges for {} instances from write replica set ",
                         tokenRangesByInstance.size());
 
-            // Write-replica-set includes available and pending instances; is used to prepare the token-range map
-            Map<InstanceAvailability, Set<RingInstance>> availability = getInstanceAvailability(false)
-                                                                        .entrySet()
-                                                                        .stream()
-                                                                        .collect(Collectors.groupingBy(Map.Entry::getValue,
-                                                                                                       Collectors.mapping(Map.Entry::getKey,
-                                                                                                                          Collectors.toSet())));
-            // TODO: Make this by DC; for instances to be added to "failed" set during CL checks
-            blockedInstances = availability.getOrDefault(InstanceAvailability.UNAVAILABLE_BLOCKED, Collections.emptySet());
-            replacementInstances = availability.getOrDefault(InstanceAvailability.UNAVAILABLE_REPLACEMENT, Collections.emptySet());
+            replacementInstances = response.replicaMetadata()
+                                           .stream()
+                                           .filter(m -> m.state().equalsIgnoreCase(InstanceState.REPLACING.toString()))
+                                           .map(RingInstance::new)
+                                           .collect(Collectors.toSet());
 
-            Set<String> blockedIPs = blockedInstances.stream().map(RingInstance::getIpAddress).collect(Collectors.toSet());
+            // TODO: By DC for instances to be added to "failed" set during CL checks
+            blockedInstances = response.replicaMetadata().stream()
+                                                         .map(RingInstance::new)
+                                                         .filter(this::instanceIsBlocked)
+                                                         .collect(Collectors.toSet());
 
-            // Each token range has hosts by DC. We collate them into all hosts by DC
+            Set<String> blockedIps = blockedInstances.stream().map(i -> i.getRingInstance().address())
+                                                     .collect(Collectors.toSet());
+
+            // Each token range has hosts by DC. We collate them across all ranges into all hosts by DC
             writeReplicasByDC = response.writeReplicas()
                                         .stream()
                                         .flatMap(wr -> wr.replicasByDatacenter().entrySet().stream())
                                         .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue()),
-                                                                  (l1, l2) -> filterAndMergeInstances(l1, l2, blockedIPs)));
+                                                                  (l1, l2) -> filterAndMergeInstances(l1, l2, blockedIps)));
 
             pendingReplicasByDC = getPendingReplicas(response, writeReplicasByDC);
 
@@ -497,20 +474,28 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
                                        writeReplicasByDC,
                                        pendingReplicasByDC,
                                        tokenRangesByInstance,
+                                       replicaMetadata,
                                        blockedInstances,
                                        replacementInstances);
+    }
+
+    private Map<String, Set<String>> getReplacementInstancesByDC(TokenRangeReplicasResponse response)
+    {
+        return response.replicaMetadata()
+                       .stream()
+                       .filter(m -> m.state().equalsIgnoreCase(InstanceState.REPLACING.toString()))
+                       .collect(Collectors.groupingBy(ReplicaMetadata::datacenter,
+                                                      Collectors.mapping(ReplicaMetadata::address,
+                                                                         Collectors.toSet())));
     }
 
     private Set<String> filterAndMergeInstances(Set<String> instancesList1, Set<String> instancesList2, Set<String> blockedIPs)
     {
         Set<String> merged = new HashSet<>();
         // Removes blocked instances. If this is included, remove blockedInstances from CL checks
-//        merged.addAll(instancesList1.stream().filter(i -> !blockedIPs.contains(i)).collect(Collectors.toSet()));
-//        merged.addAll(instancesList2.stream().filter(i -> !blockedIPs.contains(i)).collect(Collectors.toSet()));
+        merged.addAll(instancesList1.stream().filter(i -> !blockedIPs.contains(i)).collect(Collectors.toSet()));
+        merged.addAll(instancesList2.stream().filter(i -> !blockedIPs.contains(i)).collect(Collectors.toSet()));
 
-        // Blocked instances are included in write-replicas. TODO: Remove from write-path
-        merged.addAll(instancesList1);
-        merged.addAll(instancesList2);
         return merged;
     }
 
@@ -526,42 +511,25 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
 
     }
 
-    private Multimap<RingInstance, Range<BigInteger>> getTokenRangesByInstance(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas)
+    private Multimap<RingInstance, Range<BigInteger>> getTokenRangesByInstance(List<ReplicaInfo> writeReplicas,
+                                                                               List<ReplicaMetadata> replicaMetadata)
     {
-        Multimap<RingInstance, Range<BigInteger>> tokenRanges = ArrayListMultimap.create();
-        for (TokenRangeReplicasResponse.ReplicaInfo rInfo: writeReplicas)
+        Multimap<RingInstance, Range<BigInteger>> instanceToRangeMap = ArrayListMultimap.create();
+        for (ReplicaInfo rInfo: writeReplicas)
         {
-            // TODO: These are open-closed ranges
             Range<BigInteger> range = Range.openClosed(new BigInteger(rInfo.start()), new BigInteger(rInfo.end()));
             for (Map.Entry<String, List<String>> dcReplicaEntry: rInfo.replicasByDatacenter().entrySet())
             {
+                // For each writeReplica, get metadata and update map to include range
                 dcReplicaEntry.getValue().forEach(ipAddress -> {
-                    // For a given range, we can expect the instances to be unique => create instance each time
-                    String hostIp = ipAddress.contains(":") ? ipAddress.split(":")[0] : ipAddress;
 
-                    // We  query the sidecar ring endpoint for the list of instances as they include the instance metadata
-                    // which is not currently available in the token-range API response.
-                    Optional<RingInstance> ringInstance = getRingResponse().stream()
-                                                                           .filter(e -> e.address().equals(hostIp))
-                                                                           .map(RingInstance::new)
-                                                                           .findAny();
-
-                    // Note: Instances returned from token-ranges endpoint should match those from the ring endpoint
-                    // This should not happen. In the event that they do not match, we log as error for debugging.
-                    if (!ringInstance.isPresent())
-//                        || skippedInstances.contains(ringInstance.get()))
-                    {
-                        LOGGER.error("Instance {} with token range not found in the ring", hostIp);
-                    }
-                    else
-                    {
-                        RingEntry entry = ringInstance.get().getRingInstance();
-                        tokenRanges.put(new RingInstance(entry), range);
-                    }
+                    // Get metadata for this IP; Create RingInstance
+                    ReplicaMetadata replica = replicaMetadata.stream().filter(r -> r.address().equals(ipAddress)).findFirst().get();
+                    instanceToRangeMap.put(new RingInstance(replica), range);
                 });
             }
         }
-        return tokenRanges;
+        return instanceToRangeMap;
     }
 
     public String getVersionFromFeature()
@@ -600,37 +568,6 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         return getLowestVersion(getAllNodeSettings());
     }
 
-    protected RingResponse getRingResponse()
-    {
-        RingResponse currentRingResponse = ringResponse;
-        if (currentRingResponse != null)
-        {
-            return currentRingResponse;
-        }
-
-        synchronized (this)
-        {
-            if (ringResponse == null)
-            {
-                try
-                {
-                    ringResponse = getCurrentRingResponse();
-                }
-                catch (Exception exception)
-                {
-                    LOGGER.error("Failed to load Cassandra ring", exception);
-                    throw new RuntimeException(exception);
-                }
-            }
-            return ringResponse;
-        }
-    }
-
-    private RingResponse getCurrentRingResponse() throws Exception
-    {
-        return getCassandraContext().getSidecarClient().ring(conf.keyspace).get();
-    }
-
     @VisibleForTesting
     public String getLowestVersion(List<NodeSettings> allNodeSettings)
     {
@@ -666,73 +603,13 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         return InstanceStatus.UP.name().equalsIgnoreCase(ringEntry.status());
     }
 
+    protected boolean instanceIsBeingReplaced(RingEntry ringEntry)
+    {
+        return InstanceState.REPLACING.name().equalsIgnoreCase(ringEntry.state());
+    }
+
     private boolean instanceIsJoining(RingEntry ringEntry)
     {
         return InstanceState.JOINING.name().equalsIgnoreCase(ringEntry.state());
-    }
-
-    private boolean isReplacement(final RingInstance instance)
-    {
-        GossipInfoResponse gossipInfo = getGossipInfo(true);
-        LOGGER.info("Gossipinfo: {} while checking for instance with IP: {} and fqdn: {}",
-                    gossipInfo,
-                    instance.getIpAddress(),
-                    instance.getNodeName());
-
-        String gossipKeySuffix = "/" + instance.getIpAddress();
-        String gossipKey = (instance.getNodeName().isEmpty() || instance.getNodeName().equals("?"))
-                           ? gossipKeySuffix
-                           : instance.getNodeName() + gossipKeySuffix;
-
-        LOGGER.info("Looking up gossip key {} GossipInfo keyset: {}", gossipKey, gossipInfo.keySet());
-        GossipInfoResponse.GossipInfo hostInfo = gossipInfo.get(gossipKey);
-        if (hostInfo != null)
-        {
-            LOGGER.info("Found hostinfo: {}", hostInfo);
-            String hostStatus = hostInfo.status();
-            if (hostStatus != null)
-            {
-                // If status has gone to NORMAL, we can't determine here if this was a host replacement or not.
-                // CassandraRingManager will handle detecting the ring change if it's gone NORMAL after the job starts.
-                return hostStatus.startsWith("BOOT_REPLACE,") || hostStatus.equals("NORMAL");
-            }
-        }
-        return false;
-    }
-
-    protected GossipInfoResponse getGossipInfo(boolean forceRefresh)
-    {
-        GossipInfoResponse currentGossipInfo = this.gossipInfo;
-        if (!forceRefresh && currentGossipInfo != null)
-        {
-            return currentGossipInfo;
-        }
-        else
-        {
-            synchronized (this)
-            {
-                if (forceRefresh || this.gossipInfo == null)
-                {
-                    try
-                    {
-                        this.gossipInfo = this.cassandraContext.getSidecarClient()
-                                                               .gossipInfo()
-                                                               .get(this.conf.getHttpResponseTimeoutMs(), TimeUnit.MILLISECONDS);
-                    }
-                    catch (InterruptedException | ExecutionException var6)
-                    {
-                        LOGGER.error("Failed to retrieve gossip information");
-                        throw new RuntimeException("Failed to retrieve gossip information", var6);
-                    }
-                    catch (TimeoutException var7)
-                    {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Failed to retrieve gossip information", var7);
-                    }
-                }
-
-                return this.gossipInfo;
-            }
-        }
     }
 }

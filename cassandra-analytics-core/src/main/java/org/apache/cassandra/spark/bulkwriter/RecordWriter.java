@@ -193,7 +193,7 @@ public class RecordWriter implements Serializable
     }
 
     /**
-     * Creates a new session if we have the current token range intersecting the ranges from the write replica-set.
+     * Creates a new session if we have the current token range intersecting the ranges from write replica-set.
      * If we do find the need to split a range into sub-ranges, we create the corresponding session for the sub-range
      * if the token from the row data belongs to the range.
      */
@@ -278,7 +278,7 @@ public class RecordWriter implements Serializable
         }
     }
 
-    public void writeRow(Tuple2<DecoratedKey, Object[]> rowData,
+    private void writeRow(Tuple2<DecoratedKey, Object[]> rowData,
                          Map<String, Object> valueMap,
                          int partitionId,
                          Range<BigInteger> range) throws IOException
@@ -303,7 +303,7 @@ public class RecordWriter implements Serializable
     /**
      * Stream to replicas; if batchSize is reached, "finalize" SST to "schedule" streamSession
      */
-    public void checkBatchSize(final StreamSession streamSession, final int partitionId, final JobInfo job) throws IOException
+    private void checkBatchSize(final StreamSession streamSession, final int partitionId, final JobInfo job) throws IOException
     {
         if (job.getRowBufferMode() == RowBufferMode.UNBUFFERED)
         {
@@ -318,7 +318,7 @@ public class RecordWriter implements Serializable
         }
     }
 
-    public void maybeCreateTableWriter(int partitionId, Path baseDir) throws IOException
+    private void maybeCreateTableWriter(int partitionId, Path baseDir) throws IOException
     {
         if (sstableWriter == null)
         {
@@ -326,7 +326,6 @@ public class RecordWriter implements Serializable
             Files.createDirectories(outDir);
 
             sstableWriter = tableWriterSupplier.apply(writerContext, outDir);
-
             LOGGER.info("[{}][{}] Created new SSTable writer", partitionId, batchNumber);
         }
     }

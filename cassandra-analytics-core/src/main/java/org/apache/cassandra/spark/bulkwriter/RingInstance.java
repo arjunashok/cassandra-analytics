@@ -26,6 +26,7 @@ import java.io.Serializable;
 import java.util.Objects;
 
 import org.apache.cassandra.sidecar.common.data.RingEntry;
+import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse.ReplicaMetadata;
 import org.apache.cassandra.spark.common.model.CassandraInstance;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +40,18 @@ public class RingInstance implements CassandraInstance, Serializable
         this.ringEntry = ringEntry;
     }
 
+    public RingInstance(ReplicaMetadata replica)
+    {
+        this.ringEntry = new RingEntry.Builder()
+                         .fqdn(replica.fqdn())
+                         .address(replica.address())
+                         .datacenter(replica.datacenter())
+                         .state(replica.state())
+                         .status(replica.status())
+                         .build();
+    }
+
+    // Used only in tests
     @Override
     public String getToken()
     {
@@ -57,8 +70,6 @@ public class RingInstance implements CassandraInstance, Serializable
         return ringEntry.datacenter();
     }
 
-    // TODO: Enhance token-ranges endpoint to use fqdn and port; at which point we will not need IP address based filtering
-    // - token-range enhancements prereq for OSS
     @Override
     public String getIpAddress()
     {

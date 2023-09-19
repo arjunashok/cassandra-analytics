@@ -108,16 +108,17 @@ public class BulkWriteValidator
 
     public void validateClOrFail(TokenRangeMapping<RingInstance> tokenRangeMapping)
     {
+        // Updates failures by looking up instance metadata
         updateInstanceAvailability();
+        // Fails if the failures violate consistency requirements
         validateClOrFail(cluster.getRing(true), tokenRangeMapping, failureHandler, LOGGER, phase, job);
     }
-
 
     private void updateInstanceAvailability()
     {
         cluster.refreshClusterInfo();
-        Map<RingInstance, InstanceAvailability> availability = cluster.getInstanceAvailability(false);
-        availability.forEach(this::updateFailureHandler);
+        Map<RingInstance, InstanceAvailability> availability = cluster.getInstanceAvailability();
+        availability.forEach(this::checkInstance);
     }
 
     private void updateFailureHandler(RingInstance instance, InstanceAvailability availability)
@@ -139,4 +140,20 @@ public class BulkWriteValidator
         }
     }
 
+    private void checkInstance(RingInstance instance, InstanceAvailability availability)
+    {
+        throwIfInvalidState(instance, availability);
+        updateFailureHandler(instance, availability);
+    }
+    private void throwIfInvalidState(RingInstance instance, InstanceAvailability availability)
+    {
+        if (availability == InstanceAvailability.INVALID_STATE)
+        {
+            // If we find any nodes in a totally invalid state, just throw as we can't continue
+            String message = String.format("Instance (%s) is in an invalid state (%s) during import. "
+                                           + "Please rerun import once topology changes are complete.",
+                                           instance.getNodeName(), cluster.getInstanceState(instance));
+            throw new RuntimeException(message);
+        }
+    }
 }

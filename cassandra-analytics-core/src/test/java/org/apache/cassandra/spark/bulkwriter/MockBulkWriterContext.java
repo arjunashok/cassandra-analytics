@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -153,7 +154,6 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
     @Override
     public String getKeyspaceSchema(boolean cached)
     {
-        // TODO: Fix me
         throw new UnsupportedOperationException();
     }
 
@@ -293,11 +293,6 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
         return cassandraVersion;
     }
 
-    public Map<RingInstance, InstanceAvailability> getInstanceAvailability(boolean cached)
-    {
-        return Collections.emptyMap();
-    }
-
     @Override
     public RemoteCommitResult commitSSTables(CassandraInstance instance, String migrationId, List<String> uuids)
     {
@@ -344,7 +339,9 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
 
     public Map<RingInstance, InstanceAvailability> getInstanceAvailability()
     {
-        return null;
+        return tokenRangeMapping.getReplicaMetadata().stream()
+                                .map(RingInstance::new)
+                                .collect(Collectors.toMap(Function.identity(), v -> InstanceAvailability.AVAILABLE));
     }
 
     @Override

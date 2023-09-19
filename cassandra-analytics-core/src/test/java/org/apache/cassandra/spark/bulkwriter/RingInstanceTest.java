@@ -227,6 +227,7 @@ public class RingInstanceTest
                                                                                 writeReplicas,
                                                                                 Collections.emptyMap(),
                                                                                 tokenRanges,
+                                                                                Collections.emptyList(),
                                                                                 Collections.emptySet(),
                                                                                 Collections.emptySet());
 

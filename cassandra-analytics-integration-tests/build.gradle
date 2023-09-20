@@ -32,6 +32,7 @@ project(':cassandra-analytics-integration-tests') {
     }
 
     dependencies {
+        implementation(project(':cassandra-analytics-core'))
         testImplementation(group: "${sparkGroupId}", name: "spark-core_${scalaMajorVersion}", version: "${sparkVersion}")
         testImplementation(group: "${sparkGroupId}", name: "spark-sql_${scalaMajorVersion}", version: "${sparkVersion}")
 

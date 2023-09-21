@@ -104,14 +104,32 @@ public class MockBulkWriterContext implements BulkWriterContext, ClusterInfo, Jo
         this.cassandraVersion = cassandraVersion;
         this.consistencyLevel = consistencyLevel;
         validPair = TableSchemaTestCommon.buildMatchedDataframeAndCqlColumns(
-        new String[]{"id", "date", "course", "marks" },
-        new org.apache.spark.sql.types.DataType[]{DataTypes.IntegerType, DataTypes.DateType, DataTypes.StringType, DataTypes.IntegerType },
-        new CqlField.CqlType[]{mockCqlType(INT), mockCqlType(DATE), mockCqlType(VARCHAR), mockCqlType(INT) });
+        new String[]
+        {
+        "id", "date", "course", "marks"
+        },
+        new org.apache.spark.sql.types.DataType[]
+        {
+        DataTypes.IntegerType, DataTypes.DateType, DataTypes.StringType, DataTypes.IntegerType
+        },
+        new CqlField.CqlType[]
+        {
+        mockCqlType(INT), mockCqlType(DATE), mockCqlType(VARCHAR), mockCqlType(INT)
+        });
         StructType validDataFrameSchema = validPair.getKey();
         ImmutableMap<String, CqlField.CqlType> validCqlColumns = validPair.getValue();
-        String[] partitionKeyColumns = {"id", "date"};
-        String[] primaryKeyColumnNames = {"id", "date"};
-        ColumnType<?>[] partitionKeyColumnTypes = {ColumnTypes.INT, ColumnTypes.INT};
+        String[] partitionKeyColumns =
+        {
+        "id", "date"
+        };
+        String[] primaryKeyColumnNames =
+        {
+        "id", "date"
+        };
+        ColumnType<?>[] partitionKeyColumnTypes =
+        {
+        ColumnTypes.INT, ColumnTypes.INT
+        };
         this.schema = new TableSchemaTestCommon.MockTableSchemaBuilder()
                       .withCqlColumns(validCqlColumns)
                       .withPartitionKeyColumns(partitionKeyColumns)

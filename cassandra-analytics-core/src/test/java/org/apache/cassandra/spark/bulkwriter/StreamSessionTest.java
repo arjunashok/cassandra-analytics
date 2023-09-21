@@ -63,8 +63,6 @@ public class StreamSessionTest
     private static final int FILES_PER_SSTABLE = 8;
     private static final int RF = 3;
 
-//    @Rule
-//    public TemporaryFolder folder = new TemporaryFolder();
     private StreamSession ss;
     private MockBulkWriterContext writerContext;
     private List<String> expectedInstances;
@@ -81,7 +79,6 @@ public class StreamSessionTest
         ring = RingUtils.buildRing(ImmutableMap.of("DC1", 3), "test");
         tokenRangeMapping = RingUtils.buildTokenRangeMapping(0, ImmutableMap.of("DC1", 3), 12);
         writerContext = getBulkWriterContext();
-//        tableWriter = new MockTableWriter(folder);
         tableWriter = new MockTableWriter(folder);
         executor = new MockScheduledExecutorService();
         ss = new StreamSession(writerContext, "sessionId", range, executor, new ReplicaAwareFailureHandler<>(writerContext.cluster().getPartitioner()));
@@ -112,23 +109,6 @@ public class StreamSessionTest
         assertThat(instances, containsInAnyOrder(expectedInstances.toArray()));
     }
 
-    // TODO: Evaluate if applicable
-//    @Test
-//    public void testEmptyTokenRangeFails() throws IOException
-//    {
-//        Exception exception = assertThrows(IllegalStateException.class,
-//                                           () ->
-//                                           ss = new StreamSession(writerContext,
-//                                                                  "sessionId",
-//                                                                  Range.range(BigInteger.valueOf(0L),
-//                                                                              BoundType.CLOSED,
-//                                                                              BigInteger.valueOf(0L),
-//                                                                              BoundType.OPEN),
-//                                                                  new ReplicaAwareFailureHandler<>(
-//                                                                  writerContext.cluster().getPartitioner())));
-//        assertThat(exception.getMessage(), matchesPattern("Partition range \\[0(‥|..)0\\) is mapping more than one range \\{}"));
-//    }
-
     @Test
     public void testMismatchedTokenRangeFails() throws IOException
     {
@@ -136,9 +116,9 @@ public class StreamSessionTest
         tr.addRow(BigInteger.valueOf(9999L), COLUMN_BOUND_VALUES);
         tr.close(writerContext, 1);
         IllegalStateException illegalStateException = assertThrows(IllegalStateException.class,
-                                                      () -> ss.scheduleStream(tr));
+                                                                   () -> ss.scheduleStream(tr));
         assertThat(illegalStateException.getMessage(), matchesPattern(
-                     "SSTable range \\[9999(‥|..)9999] should be enclosed in the partition range \\[101(‥|..)199]"));
+        "SSTable range \\[9999(‥|..)9999] should be enclosed in the partition range \\[101(‥|..)199]"));
     }
 
     @Test
@@ -194,19 +174,6 @@ public class StreamSessionTest
                                                     .collect(Collectors.toList());
         assertThat(actualInstances, containsInAnyOrder(expectedInstances.toArray()));
     }
-
-//    @Test
-//    public void unavailableInstancesCreateErrors() throws IOException, ExecutionException, InterruptedException
-//    {
-//        writerContext.setInstancesAreAvailable(false);
-//        ss = new StreamSession(writerContext, "sessionId", range, executor);
-//        SSTableWriter tr = new NonValidatingTestSSTableWriter(tableWriter, folder);
-//        tr.addRow(BigInteger.valueOf(102L), COLUMN_BOUND_VALUES);
-//        tr.close(writerContext, 1);
-//        ss.scheduleStream(tr);
-//        RuntimeException ex = assertThrows(RuntimeException.class, () -> ss.close());
-//        assertThat(ex.getMessage(), startsWith(LOAD_RANGE_ERROR_PREFIX));
-//    }
 
     @Test
     public void streamWithNoWritersReturnsEmptyStreamResult() throws ExecutionException, InterruptedException

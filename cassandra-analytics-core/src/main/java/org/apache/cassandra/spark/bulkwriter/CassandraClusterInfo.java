@@ -75,7 +75,7 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
     protected transient CassandraRing ring;
 
     protected transient TokenRangeMapping<RingInstance> tokenRangeReplicas;
-    protected  transient Map<RingInstance, InstanceAvailability> availability;
+    protected transient Map<RingInstance, InstanceAvailability> availability;
     protected transient String keyspaceSchema;
     protected transient GossipInfoResponse gossipInfo;
     protected transient CassandraContext cassandraContext;
@@ -137,7 +137,7 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
 
     /**
      * Gets a Cassandra Context
-     *
+     * <p>
      * NOTE: The caller of this method is required to call `shutdown` on the returned CassandraContext instance
      *
      * @return an instance of CassandraContext based on the configuration settings
@@ -294,6 +294,7 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
 
     /**
      * Fetch the (optionally cached) ring metadata including replication factor and partitioner
+     *
      * @param cached
      * @return CassandraRing holder for ring metadata
      */
@@ -381,7 +382,7 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
     public Map<RingInstance, InstanceAvailability> getInstanceAvailability()
     {
         TokenRangeMapping<RingInstance> mapping = getTokenRangeMapping(true);
-        final Map<RingInstance, InstanceAvailability> result =
+        Map<RingInstance, InstanceAvailability> result =
         mapping.getReplicaMetadata()
                .stream()
                .map(RingInstance::new)
@@ -394,7 +395,7 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         return result;
     }
 
-    private InstanceAvailability determineInstanceAvailability(final RingInstance instance)
+    private InstanceAvailability determineInstanceAvailability(RingInstance instance)
     {
         if (!instanceIsUp(instance.getRingInstance()))
         {
@@ -416,11 +417,11 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
 
     private TokenRangeMapping<RingInstance> getTokenRangeReplicas()
     {
-        final Map<String, Set<String>> writeReplicasByDC;
-        final Map<String, Set<String>> pendingReplicasByDC;
-        final List<ReplicaMetadata> replicaMetadata;
-        final Set<RingInstance> blockedInstances;
-        final Set<RingInstance> replacementInstances;
+        Map<String, Set<String>> writeReplicasByDC;
+        Map<String, Set<String>> pendingReplicasByDC;
+        List<ReplicaMetadata> replicaMetadata;
+        Set<RingInstance> blockedInstances;
+        Set<RingInstance> replacementInstances;
         Multimap<RingInstance, Range<BigInteger>> tokenRangesByInstance;
         try
         {
@@ -439,9 +440,9 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
 
             // TODO: By DC for instances to be added to "failed" set during CL checks
             blockedInstances = response.replicaMetadata().stream()
-                                                         .map(RingInstance::new)
-                                                         .filter(this::instanceIsBlocked)
-                                                         .collect(Collectors.toSet());
+                                       .map(RingInstance::new)
+                                       .filter(this::instanceIsBlocked)
+                                       .collect(Collectors.toSet());
 
             Set<String> blockedIps = blockedInstances.stream().map(i -> i.getRingInstance().address())
                                                      .collect(Collectors.toSet());
@@ -508,17 +509,16 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
                                 .stream()
                                 .filter(entry -> entry.getValue().stream().noneMatch(readReplicas::contains))
                                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
     }
 
     private Multimap<RingInstance, Range<BigInteger>> getTokenRangesByInstance(List<ReplicaInfo> writeReplicas,
                                                                                List<ReplicaMetadata> replicaMetadata)
     {
         Multimap<RingInstance, Range<BigInteger>> instanceToRangeMap = ArrayListMultimap.create();
-        for (ReplicaInfo rInfo: writeReplicas)
+        for (ReplicaInfo rInfo : writeReplicas)
         {
             Range<BigInteger> range = Range.openClosed(new BigInteger(rInfo.start()), new BigInteger(rInfo.end()));
-            for (Map.Entry<String, List<String>> dcReplicaEntry: rInfo.replicasByDatacenter().entrySet())
+            for (Map.Entry<String, List<String>> dcReplicaEntry : rInfo.replicasByDatacenter().entrySet())
             {
                 // For each writeReplica, get metadata and update map to include range
                 dcReplicaEntry.getValue().forEach(ipAddress -> {

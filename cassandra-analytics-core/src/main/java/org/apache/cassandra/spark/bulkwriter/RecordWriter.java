@@ -279,9 +279,9 @@ public class RecordWriter implements Serializable
     }
 
     private void writeRow(Tuple2<DecoratedKey, Object[]> rowData,
-                         Map<String, Object> valueMap,
-                         int partitionId,
-                         Range<BigInteger> range) throws IOException
+                          Map<String, Object> valueMap,
+                          int partitionId,
+                          Range<BigInteger> range) throws IOException
     {
         DecoratedKey key = rowData._1();
         BigInteger token = key.getToken();

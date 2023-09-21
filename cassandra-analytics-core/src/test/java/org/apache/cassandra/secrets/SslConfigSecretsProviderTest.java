@@ -39,6 +39,7 @@ import javax.net.ssl.TrustManagerFactory;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -75,7 +76,7 @@ public class SslConfigSecretsProviderTest
         trustStorePassword = readPassword("/secrets/fakecerts/client-truststore-password");
     }
 
-//    @Test
+    @Test
     public void testInitializationSucceeds()
     {
         SslConfig config = new SslConfig.Builder<>().build();
@@ -83,7 +84,7 @@ public class SslConfigSecretsProviderTest
         assertNotNull(secretsConfigProvider);
     }
 
-//    @Test
+    @Test
     public void testSuccessWithCertsPaths() throws IOException
     {
         Map<String, String> jobOptions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -120,7 +121,7 @@ public class SslConfigSecretsProviderTest
         }
     }
 
-//    @Test
+    @Test
     public void testSuccessWithEncodedCerts() throws IOException
     {
         Map<String, String> jobOptions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -162,7 +163,7 @@ public class SslConfigSecretsProviderTest
         }
     }
 
-//    @Test
+    @Test
     public void testInvalidPathToKeyStore()
     {
         Map<String, String> jobOptions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -189,7 +190,7 @@ public class SslConfigSecretsProviderTest
         }
     }
 
-//    @Test
+    @Test
     public void testInvalidPathToTrustStore()
     {
         Map<String, String> jobOptions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);

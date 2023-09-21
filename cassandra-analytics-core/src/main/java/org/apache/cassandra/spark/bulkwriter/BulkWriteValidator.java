@@ -58,7 +58,7 @@ public class BulkWriteValidator
                                         String phase,
                                         JobInfo job)
     {
-        final Collection<AbstractMap.SimpleEntry<Range<BigInteger>, Multimap<RingInstance, String>>> failedRanges =
+        Collection<AbstractMap.SimpleEntry<Range<BigInteger>, Multimap<RingInstance, String>>> failedRanges =
         failureHandler.getFailedEntries(ring, tokenRangeMapping, job.getConsistencyLevel(), job.getLocalDC());
 
         if (failedRanges.isEmpty())
@@ -67,7 +67,7 @@ public class BulkWriteValidator
         }
         else
         {
-            final String message = String.format("Failed to load %s ranges with %s for job %s in phase %s.",
+            String message = String.format("Failed to load %s ranges with %s for job %s in phase %s.",
                                                  failedRanges.size(), job.getConsistencyLevel(), job.getId(), phase);
             logger.error(message);
             failedRanges.forEach(failedRange ->
@@ -136,7 +136,6 @@ public class BulkWriteValidator
                 LOGGER.warn("{} failed in phase {} on {} because {}", failedRange, phase, nodeDisplayName, message);
                 failureHandler.addFailure(failedRange, instance, message);
             });
-
         }
     }
 
@@ -145,6 +144,7 @@ public class BulkWriteValidator
         throwIfInvalidState(instance, availability);
         updateFailureHandler(instance, availability);
     }
+
     private void throwIfInvalidState(RingInstance instance, InstanceAvailability availability)
     {
         if (availability == InstanceAvailability.INVALID_STATE)

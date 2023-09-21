@@ -124,7 +124,7 @@ public final class CommitCoordinator extends AbstractFuture<List<CommitResult>> 
                             Runnable::run);
     }
 
-    private Stream<ListenableFuture<CommitResult>> commit(final Map<RingInstance, ListeningExecutorService> executors,
+    private Stream<ListenableFuture<CommitResult>> commit(Map<RingInstance, ListeningExecutorService> executors,
                                                           RingInstance instance,
                                                           Map<String, Range<BigInteger>> uploadRanges)
     {
@@ -133,16 +133,16 @@ public final class CommitCoordinator extends AbstractFuture<List<CommitResult>> 
                                   inst -> MoreExecutors.listeningDecorator(
                                   Executors.newFixedThreadPool(job.getCommitThreadsPerInstance(),
                                                                ThreadUtil.threadFactory("commit-sstable-" + inst.getNodeName()))));
-        final List<String> allUuids = new ArrayList<>(uploadRanges.keySet());
+        List<String> allUuids = new ArrayList<>(uploadRanges.keySet());
         LOGGER.info("Committing UUIDs={}, Ranges={}, instance={}", allUuids, uploadRanges.values(), instance.getNodeName());
         List<List<String>> batches = Lists.partition(allUuids, job.getCommitBatchSize());
         return batches.stream().map(uuids -> {
-            final String migrationId = UUID.randomUUID().toString();
+            String migrationId = UUID.randomUUID().toString();
             return executorService.submit(() -> {
-                final CommitResult commitResult = new CommitResult(migrationId, instance, uploadRanges);
+                CommitResult commitResult = new CommitResult(migrationId, instance, uploadRanges);
                 try
                 {
-                    final DataTransferApi.RemoteCommitResult result = transferApi.commitSSTables(instance, migrationId, uuids);
+                    DataTransferApi.RemoteCommitResult result = transferApi.commitSSTables(instance, migrationId, uuids);
                     if (result.isSuccess)
                     {
                         LOGGER.info("[{}]: Commit succeeded on {} for {}", migrationId, instance.getNodeName(), uploadRanges);
@@ -164,7 +164,7 @@ public final class CommitCoordinator extends AbstractFuture<List<CommitResult>> 
                         }
                     }
                 }
-                catch (final Throwable throwable)
+                catch (Throwable throwable)
                 {
                     addFailures(uploadRanges, commitResult, throwable.toString());
                     // On errMsg, refresh cluster information so we get the latest block list and status information to react accordingly

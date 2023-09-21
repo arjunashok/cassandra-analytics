@@ -41,7 +41,7 @@ import org.apache.cassandra.spark.data.partitioner.Partitioner;
  * ring based on "nodetool ring" coming from Cassandra. CassandraRingBuilder in mgrclient creates ring from
  * ring of node in NORMAL state.
  * <p>
-
+ *
  * <p>
  * {@link CassandraInstance} doesn't extend {@link Serializable}. So, it is possible to use {@link CassandraRing} with
  * non serializable {@link CassandraInstance}. If we try to serialize ring with those instances, you will see

@@ -58,14 +58,6 @@ public class StreamSessionConsistencyTest
     private static final int NUMBER_DCS = 2;
     private static final int FILES_PER_SSTABLE = 8;
     private static final int REPLICATION_FACTOR = 3;
-//    private static final List<String> EXPECTED_INSTANCES =
-//            ImmutableList.of("DC1-i1", "DC1-i2", "DC1-i3", "DC2-i1", "DC2-i2", "DC2-i3");
-//    private static final Range<BigInteger> RANGE = Range.range(BigInteger.valueOf(101L), BoundType.CLOSED,
-//                                                               BigInteger.valueOf(199L), BoundType.CLOSED);
-//    private static final CassandraRing<RingInstance> RING = RingUtils.buildRing(0,
-//                                                                                ImmutableMap.of("DC1", 3, "DC2", 3),
-//                                                                                "test",
-//                                                                                6);
     private static final List<String> EXPECTED_INSTANCES = ImmutableList.of("DC1-i1", "DC1-i2", "DC1-i3", "DC2-i1", "DC2-i2", "DC2-i3");
     private static final Range<BigInteger> RANGE = Range.range(BigInteger.valueOf(101L), BoundType.CLOSED, BigInteger.valueOf(199L), BoundType.CLOSED);
     private static final CassandraRing RING = RingUtils.buildRing(ImmutableMap.of("DC1", 3, "DC2", 3), "test");
@@ -79,13 +71,6 @@ public class StreamSessionConsistencyTest
     private MockBulkWriterContext writerContext;
     private final MockScheduledExecutorService executor = new MockScheduledExecutorService();
 
-//    @Parameterized.Parameter(0)
-//    public ConsistencyLevel.CL consistencyLevel;  // CHECKSTYLE IGNORE: Public mutable field for parameterized testing
-//
-//    @Parameterized.Parameter(1)
-//    public List<Integer> failuresPerDc;           // CHECKSTYLE IGNORE: Public mutable field for parameterized testing
-//
-//    @Parameterized.Parameters(name = "CL: {0}, numFailures: {1}")
     public static Collection<Object[]> data()
     {
         List<ConsistencyLevel.CL> cls = Arrays.stream(ConsistencyLevel.CL.values()).collect(Collectors.toList());
@@ -95,11 +80,8 @@ public class StreamSessionConsistencyTest
         return clsToFailures.stream().map(List::toArray).collect(Collectors.toList());
     }
 
-//    @Before
-//    public void setup()
     private void setup(ConsistencyLevel.CL consistencyLevel, List<Integer> failuresPerDc)
     {
-//        tableWriter = new MockTableWriter(folder);
         tableWriter = new MockTableWriter(folder);
         writerContext = new MockBulkWriterContext(RING, TOKEN_RANGE_MAPPING, "cassandra-4.0.0", consistencyLevel);
         streamSession = new StreamSession(writerContext,
@@ -137,10 +119,6 @@ public class StreamSessionConsistencyTest
                 return new DataTransferApi.RemoteCommitResult(true, Collections.emptyList(), uuids,  "");
             }
         });
-//        SSTableWriter tr = new NonValidatingTestSSTableWriter(tableWriter, folder.getRoot().toPath());
-//        Object[] row = {0, 1, "course", 2};
-//        tr.addRow(BigInteger.valueOf(102L), row);
-
         SSTableWriter tr = new NonValidatingTestSSTableWriter(tableWriter, folder);
         tr.addRow(BigInteger.valueOf(102L), COLUMN_BIND_VALUES);
         tr.close(writerContext, 1);
@@ -188,9 +166,6 @@ public class StreamSessionConsistencyTest
         writerContext.setUploadSupplier(instance -> dcFailures.get(instance.getDataCenter()).getAndDecrement() <= 0);
         SSTableWriter tr = new NonValidatingTestSSTableWriter(tableWriter, folder);
         tr.addRow(BigInteger.valueOf(102L), COLUMN_BIND_VALUES);
-//        SSTableWriter tr = new NonValidatingTestSSTableWriter(tableWriter, folder.getRoot().toPath());
-//        Object[] row = {0, 1, "course", 2};
-//        tr.addRow(BigInteger.valueOf(102L), row);
         tr.close(writerContext, 1);
         streamSession.scheduleStream(tr);
         if (shouldFail)

@@ -42,13 +42,10 @@ import scala.util.control.NonFatal$;
 public class CassandraBulkSourceRelation extends BaseRelation implements InsertableRelation
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(CassandraBulkSourceRelation.class);
-
-    private static final String WRITE_PHASE_INITIAL = "Initializing";
     private final BulkWriterContext writerContext;
     private final SQLContext sqlContext;
     private final JavaSparkContext sparkContext;
     private final Broadcast<BulkWriterContext> broadcastContext;
-//    private final BulkWriteValidator writeValidator;
 
     @SuppressWarnings("RedundantTypeArguments")
     public CassandraBulkSourceRelation(BulkWriterContext writerContext, SQLContext sqlContext) throws Exception
@@ -57,7 +54,6 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
         this.sqlContext = sqlContext;
         this.sparkContext = JavaSparkContext.fromSparkContext(sqlContext.sparkContext());
         this.broadcastContext = sparkContext.<BulkWriterContext>broadcast(writerContext);
-//        this.writeValidator = new BulkWriteValidator(writerContext, this::cancelJob);
     }
 
     @Override
@@ -99,20 +95,16 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
         Tokenizer tokenizer = new Tokenizer(writerContext);
         TableSchema tableSchema = writerContext.schema().getTableSchema();
         JavaPairRDD<DecoratedKey, Object[]> sortedRDD = data.toJavaRDD()
-                .map(Row::toSeq)
-                .map(seq -> JavaConverters.seqAsJavaListConverter(seq).asJava().toArray())
-                .map(tableSchema::normalize)
-                .keyBy(tokenizer::getDecoratedKey)
-                .repartitionAndSortWithinPartitions(broadcastContext.getValue().job().getTokenPartitioner());
+                                                            .map(Row::toSeq)
+                                                            .map(seq -> JavaConverters.seqAsJavaListConverter(seq).asJava().toArray())
+                                                            .map(tableSchema::normalize)
+                                                            .keyBy(tokenizer::getDecoratedKey)
+                                                            .repartitionAndSortWithinPartitions(broadcastContext.getValue().job().getTokenPartitioner());
         persist(sortedRDD, data.columns());
     }
 
     private void persist(@NotNull JavaPairRDD<DecoratedKey, Object[]> sortedRDD, String[] columnNames)
     {
-//        writeValidator.setPhase("Environment Validation");
-//        writeValidator.setPhase("UploadAndCommit");
-//        writeValidator.validateInitialEnvironment();
-
         try
         {
             sortedRDD.foreachPartition(writeRowsInPartition(broadcastContext, columnNames));

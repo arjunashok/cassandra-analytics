@@ -87,7 +87,7 @@ public class SSTableWriterTest
     @MethodSource("data")
     public void canCreateWriterForVersion(String version) throws IOException
     {
-        final MockBulkWriterContext writerContext = new MockBulkWriterContext(ring, tokenRangeMapping, version, ConsistencyLevel.CL.LOCAL_QUORUM);
+        MockBulkWriterContext writerContext = new MockBulkWriterContext(ring, tokenRangeMapping, version, ConsistencyLevel.CL.LOCAL_QUORUM);
         SSTableWriter tw = new SSTableWriter(writerContext, tmpDir);
         tw.addRow(BigInteger.ONE, ImmutableMap.of("id", 1, "date", 1, "course", "foo", "marks", 1));
         tw.close(writerContext, 1);

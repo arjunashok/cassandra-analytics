@@ -51,19 +51,19 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
     private transient Map<String, Set<String>> writeReplicasByDC;
     private transient Map<String, Set<String>> pendingReplicasByDC;
     private transient List<ReplicaMetadata> replicaMetadata;
-    public TokenRangeMapping(final Partitioner partitioner,
-                             final Map<String, Set<String>> writeReplicasByDC,
-                             final Map<String, Set<String>> pendingReplicasByDC,
-                             final Multimap<Instance, Range<BigInteger>> tokenRanges,
-                             final List<ReplicaMetadata> replicaMetadata,
-                             final Set<RingInstance> blockedInstances,
-                             final Set<RingInstance> replacementInstances)
+
+    public TokenRangeMapping(Partitioner partitioner,
+                             Map<String, Set<String>> writeReplicasByDC,
+                             Map<String, Set<String>> pendingReplicasByDC,
+                             Multimap<Instance, Range<BigInteger>> tokenRanges,
+                             List<ReplicaMetadata> replicaMetadata,
+                             Set<RingInstance> blockedInstances,
+                             Set<RingInstance> replacementInstances)
     {
         this.partitioner = partitioner;
         this.tokenRangeMap = tokenRanges;
         this.pendingReplicasByDC = pendingReplicasByDC;
         this.writeReplicasByDC = writeReplicasByDC;
-        this.replicaMetadata = replicaMetadata;
         this.blockedInstances = blockedInstances;
         this.replacementInstances = replacementInstances;
         this.replicaMetadata = replicaMetadata;
@@ -83,18 +83,18 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
      * * For each overlapping range, create new replica list by adding new replica to the existing list and add it
      * back to replicaMap
      */
-    private static <Instance extends CassandraInstance> void addReplica(final Instance replica,
-                                                                        final Range<BigInteger> range,
-                                                                        final RangeMap<BigInteger, List<Instance>> replicaMap)
+    private static <Instance extends CassandraInstance> void addReplica(Instance replica,
+                                                                        Range<BigInteger> range,
+                                                                        RangeMap<BigInteger, List<Instance>> replicaMap)
     {
         Preconditions.checkArgument(range.lowerEndpoint().compareTo(range.upperEndpoint()) <= 0,
                                     "Range calculations assume range is not wrapped");
 
-        final RangeMap<BigInteger, List<Instance>> replicaRanges = replicaMap.subRangeMap(range);
-        final RangeMap<BigInteger, List<Instance>> mappingsToAdd = TreeRangeMap.create();
+        RangeMap<BigInteger, List<Instance>> replicaRanges = replicaMap.subRangeMap(range);
+        RangeMap<BigInteger, List<Instance>> mappingsToAdd = TreeRangeMap.create();
 
         replicaRanges.asMapOfRanges().forEach((key, value) -> {
-            final List<Instance> replicas = new ArrayList<>(value);
+            List<Instance> replicas = new ArrayList<>(value);
             replicas.add(replica);
             mappingsToAdd.put(key, replicas);
         });
@@ -135,15 +135,14 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
         return blockedInstances.stream()
                                .map(RingInstance::getIpAddress)
                                .collect(Collectors.toSet());
-
     }
 
     public Set<String> getBlockedInstances(String datacenter)
     {
         return blockedInstances.stream()
-                                   .filter(r -> r.getDataCenter().equalsIgnoreCase(datacenter))
-                                   .map(RingInstance::getIpAddress)
-                                   .collect(Collectors.toSet());
+                               .filter(r -> r.getDataCenter().equalsIgnoreCase(datacenter))
+                               .map(RingInstance::getIpAddress)
+                               .collect(Collectors.toSet());
     }
 
 
@@ -168,7 +167,7 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
         return this.replicasByTokenRange;
     }
 
-    public RangeMap<BigInteger, List<Instance>> getSubRanges(final Range<BigInteger> tokenRange)
+    public RangeMap<BigInteger, List<Instance>> getSubRanges(Range<BigInteger> tokenRange)
     {
         return replicasByTokenRange.subRangeMap(tokenRange);
     }
@@ -186,7 +185,7 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
     }
 
     @Override
-    public boolean equals(final Object other)
+    public boolean equals(Object other)
     {
         if (this == other)
         {
@@ -197,7 +196,7 @@ public class TokenRangeMapping<Instance extends CassandraInstance> implements Se
             return false;
         }
 
-        final TokenRangeMapping<?> that = (TokenRangeMapping<?>) other;
+        TokenRangeMapping<?> that = (TokenRangeMapping<?>) other;
 
         if (!writeReplicasByDC.equals(that.writeReplicasByDC)
             || !pendingReplicasByDC.equals(that.pendingReplicasByDC))

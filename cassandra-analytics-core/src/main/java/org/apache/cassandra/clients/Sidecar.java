@@ -131,10 +131,10 @@ public final class Sidecar
                                             .build();
 
         SidecarClientConfig sidecarConfig = SidecarClientConfigImpl.builder()
-                                                                       .maxRetries(5)
-                                                                       .retryDelayMillis(200)
-                                                                       .maxRetryDelayMillis(500)
-                                                                       .build();
+                                                                   .maxRetries(5)
+                                                                   .retryDelayMillis(200)
+                                                                   .maxRetryDelayMillis(500)
+                                                                   .build();
         return buildClient((SidecarClientConfigImpl) sidecarConfig, vertx, httpClientConfig, sidecarInstancesProvider);
     }
 
@@ -157,12 +157,12 @@ public final class Sidecar
     {
         return instances.stream()
                         .map(instance -> client
-                                .nodeSettings(instance)
-                                .exceptionally(throwable -> {
-                                    LOGGER.warn(String.format("Failed to execute node settings on instance=%s",
-                                                              instance), throwable);
-                                    return null;
-                                }))
+                                         .nodeSettings(instance)
+                                         .exceptionally(throwable -> {
+                                             LOGGER.warn(String.format("Failed to execute node settings on instance=%s",
+                                                                       instance), throwable);
+                                             return null;
+                                         }))
                         .collect(Collectors.toList());
     }
 

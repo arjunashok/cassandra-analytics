@@ -59,7 +59,9 @@ public class RecordWriterTest
     public static final int REPLICA_COUNT = 3;
     public static final int FILES_PER_SSTABLE = 8;
     public static final int UPLOADED_TABLES = 3;
-    private static final String[] COLUMN_NAMES = {"id", "date", "course", "marks"};
+    private static final String[] COLUMN_NAMES = {
+    "id", "date", "course", "marks"
+    };
 
     @TempDir
     public Path folder; // CHECKSTYLE IGNORE: Public mutable field for parameterized testing
@@ -86,16 +88,15 @@ public class RecordWriterTest
     }
 
     @Test
-    public void testSuccessfulWriteNew()
+    public void testSuccessfulWrite()
     {
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
         validateSuccessfulWrite(writerContext, data, COLUMN_NAMES);
     }
 
     @Test
-    public void testSuccessfulWrite()
+    public void testSuccessfulWriteCheckUploads()
     {
-//        validateSuccessfulWrite(writerContext, data, COLUMN_NAMES);
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
         rw.write(data);
@@ -122,7 +123,10 @@ public class RecordWriterTest
     {
         MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, true, false);
-        String[] columnNamesWithTtl = {"id", "date", "course", "marks", "ttl"};
+        String[] columnNamesWithTtl =
+        {
+        "id", "date", "course", "marks", "ttl"
+        };
         validateSuccessfulWrite(bulkWriterContext, data, columnNamesWithTtl);
     }
 
@@ -139,7 +143,10 @@ public class RecordWriterTest
     {
         MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, false, true);
-        String[] columnNamesWithTimestamp = {"id", "date", "course", "marks", "timestamp"};
+        String[] columnNamesWithTimestamp =
+        {
+        "id", "date", "course", "marks", "timestamp"
+        };
         validateSuccessfulWrite(bulkWriterContext, data, columnNamesWithTimestamp);
     }
 
@@ -148,7 +155,10 @@ public class RecordWriterTest
     {
         MockBulkWriterContext bulkWriterContext = new MockBulkWriterContext(ring, tokenRangeMapping);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true, true, true);
-        String[] columnNames = {"id", "date", "course", "marks", "ttl", "timestamp"};
+        String[] columnNames =
+        {
+        "id", "date", "course", "marks", "ttl", "timestamp"
+        };
         validateSuccessfulWrite(bulkWriterContext, data, columnNames);
     }
 
@@ -252,7 +262,6 @@ public class RecordWriterTest
     @Test
     public void testWriteWithOutOfRangeTokenFails()
     {
-//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, false);
         RuntimeException ex = assertThrows(RuntimeException.class, () -> rw.write(data));
@@ -275,7 +284,6 @@ public class RecordWriterTest
     {
         // Mock context returns a 60-minute allowable time skew, so we use something just outside the limits
         long sixtyOneMinutesInMillis = TimeUnit.MINUTES.toMillis(61);
-//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, (wc, path) -> new SSTableWriter(tw, folder));
         writerContext.setTimeProvider(() -> System.currentTimeMillis() - sixtyOneMinutesInMillis);
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
@@ -289,7 +297,6 @@ public class RecordWriterTest
         // Mock context returns a 60-minute allowable time skew, so we use something just inside the limits
         long fiftyNineMinutesInMillis = TimeUnit.MINUTES.toMillis(59);
         long remoteTime = System.currentTimeMillis() - fiftyNineMinutesInMillis;
-//        rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
         rw = new RecordWriter(writerContext, COLUMN_NAMES, () -> tc, SSTableWriter::new);
         writerContext.setTimeProvider(() -> remoteTime);  // Return a very low "current time" to make sure we fail if skew is too bad
         Iterator<Tuple2<DecoratedKey, Object[]>> data = generateData(5, true);
@@ -352,19 +359,31 @@ public class RecordWriterTest
             Object[] columns;
             if (withTTL && withTimestamp)
             {
-                columns = new Object[]{index, index, "foo" + index, index, index * 100, System.currentTimeMillis() * 1000};
+                columns = new Object[]
+                          {
+                          index, index, "foo" + index, index, index * 100, System.currentTimeMillis() * 1000
+                          };
             }
             else if (withTimestamp)
             {
-                columns = new Object[]{index, index, "foo" + index, index, System.currentTimeMillis() * 1000};
+                columns = new Object[]
+                          {
+                          index, index, "foo" + index, index, System.currentTimeMillis() * 1000
+                          };
             }
             else if (withTTL)
             {
-                columns = new Object[]{index, index, "foo" + index, index, index * 100};
+                columns = new Object[]
+                          {
+                          index, index, "foo" + index, index, index * 100
+                          };
             }
             else
             {
-                columns = new Object[]{index, index, "foo" + index, index};
+                columns = new Object[]
+                          {
+                          index, index, "foo" + index, index
+                          };
             }
             return Tuple2.apply(tokenizer.getDecoratedKey(columns), columns);
         });
@@ -387,7 +406,10 @@ public class RecordWriterTest
         int index = start;
         for (int i = 0; i < numValues; i++)
         {
-            final Object[] columns = {index, index, "foo" + index, index };
+            final Object[] columns =
+            {
+            index, index, "foo" + index, index
+            };
             DecoratedKey dKey = tokenizer.getDecoratedKey(columns);
             res.add(Tuple2.apply(new DecoratedKey(BigInteger.valueOf(index), dKey.getKey()), columns));
             index++;

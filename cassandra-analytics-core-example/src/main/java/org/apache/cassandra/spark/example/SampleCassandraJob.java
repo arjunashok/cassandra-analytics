@@ -116,6 +116,7 @@ public final class SampleCassandraJob
         try
         {
             Dataset<Row> written = write(rowCount, sql, sc);
+            LOGGER.info("Finished writing data. Reading data for validation ...");
             Dataset<Row> read = read(rowCount, sparkConf, sql, sc);
             checkSmallDataFrameEquality(written, read);
             LOGGER.info("Finished Spark job, shutting down...");

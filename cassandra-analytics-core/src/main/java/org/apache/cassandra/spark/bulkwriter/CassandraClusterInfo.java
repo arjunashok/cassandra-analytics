@@ -405,7 +405,9 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         {
             return InstanceAvailability.UNAVAILABLE_BLOCKED;
         }
-        if (instanceIsNormal(instance.getRingInstance()))
+        if (instanceIsNormal(instance.getRingInstance()) ||
+            instanceIsInTransientState(instance.getRingInstance()) ||
+            instanceIsBeingReplaced(instance.getRingInstance()))
         {
             return InstanceAvailability.AVAILABLE;
         }
@@ -608,8 +610,10 @@ public class CassandraClusterInfo implements ClusterInfo, Closeable
         return InstanceState.REPLACING.name().equalsIgnoreCase(ringEntry.state());
     }
 
-    private boolean instanceIsJoining(RingEntry ringEntry)
+    private boolean instanceIsInTransientState(RingEntry ringEntry)
     {
-        return InstanceState.JOINING.name().equalsIgnoreCase(ringEntry.state());
+        return InstanceState.JOINING.name().equalsIgnoreCase(ringEntry.state()) ||
+               InstanceState.LEAVING.name().equalsIgnoreCase(ringEntry.state()) ||
+               InstanceState.MOVING.name().equalsIgnoreCase(ringEntry.state());
     }
 }

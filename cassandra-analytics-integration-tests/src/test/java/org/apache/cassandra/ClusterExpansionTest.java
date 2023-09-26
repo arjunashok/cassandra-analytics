@@ -26,8 +26,13 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.datastax.driver.core.Session;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.ClassFileLocator;
@@ -41,17 +46,60 @@ import org.apache.cassandra.distributed.api.Feature;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
 import org.apache.cassandra.distributed.api.TokenSupplier;
 import org.apache.cassandra.distributed.shared.ClusterUtils;
-import org.apache.cassandra.sidecar.testing.IntegrationTestBase;
+import org.apache.cassandra.sidecar.common.data.QualifiedTableName;
 import org.apache.cassandra.spark.example.SampleCassandraJob;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
 import org.apache.cassandra.utils.Shared;
+import org.apache.spark.SparkConf;
+import org.apache.spark.sql.DataFrameWriter;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
-public class ClusterExpansionTest extends IntegrationTestBase
+public class ClusterExpansionTest extends ResiliencyTestBase
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClusterExpansionTest.class);
+
+    @CassandraIntegrationTest(nodesPerDc = 3, gossip = true, network = true)
+    public void sampleResiliencyTest()
+    {
+        QualifiedTableName schema = bulkWriteData();
+
+        Session session = maybeGetSession();
+        validateData(session, schema.tableName());
+    }
+
+    private QualifiedTableName bulkWriteData()
+    {
+        ImmutableMap<String, Integer> rf = ImmutableMap.of("datacenter1", 3);
+        QualifiedTableName schema = initializeSchema(rf);
+
+        SparkConf sparkConf = generateSparkConf();
+        SparkSession spark = generateSparkSession(sparkConf);
+        Dataset<Row> df = generateData(spark);
+
+        LOGGER.info("Spark Conf: " + sparkConf.toDebugString());
+
+        DataFrameWriter<Row> dfWriter = df.write()
+                                          .format("org.apache.cassandra.spark.sparksql.CassandraDataSink")
+                                          .option("sidecar_instances", "localhost,localhost2,localhost3")
+                                          .option("sidecar_port", String.valueOf(server.actualPort()))
+                                          .option("keyspace", schema.keyspace())
+                                          .option("table", schema.tableName())
+                                          .option("local_dc", "datacenter1")
+                                          .option("bulk_writer_cl", "LOCAL_QUORUM")
+                                          .option("number_splits", "-1")
+                                          // A constant timestamp and TTL can be used by setting the following options.
+                                          // .option(WriterOptions.TTL.name(), TTLOption.constant(20))
+                                          // .option(WriterOptions.TIMESTAMP.name(), TimestampOption.constant(System.currentTimeMillis() * 1000))
+                                          .mode("append");
+        dfWriter.save();
+        return schema;
+    }
 
     @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, gossip = true, network = true)
     public void runSimpleTest()
@@ -97,15 +145,7 @@ public class ClusterExpansionTest extends IntegrationTestBase
             builder.withTokenSupplier(tokenSupplier);
         });
 
-        cluster.schemaChange(
-        "  CREATE KEYSPACE spark_test WITH replication = "
-        + "{'class': 'NetworkTopologyStrategy', 'datacenter1': '3'}\n"
-        + "      AND durable_writes = true;");
-        cluster.schemaChange("CREATE TABLE spark_test.test (\n"
-                                                  + "          id BIGINT PRIMARY KEY,\n"
-                                                  + "          course BLOB,\n"
-                                                  + "          marks BIGINT\n"
-                                                  + "     );");
+        QualifiedTableName schema;
         try
         {
             IUpgradeableInstance seed = cluster.get(1);
@@ -139,10 +179,7 @@ public class ClusterExpansionTest extends IntegrationTestBase
                 ClusterUtils.awaitRingState(seed, newInstance, "Joining");
             }
 
-            SampleCassandraJob.main(new String[]
-                                    {
-                                    String.valueOf(server.actualPort())
-                                    });
+            schema = bulkWriteData();
         }
         finally
         {
@@ -152,6 +189,8 @@ public class ClusterExpansionTest extends IntegrationTestBase
                 BBHelperSingleJoiningNode.transientStateEnd.countDown();
             }
         }
+        Session session = maybeGetSession();
+        validateData(session, schema.tableName());
     }
 
     /**

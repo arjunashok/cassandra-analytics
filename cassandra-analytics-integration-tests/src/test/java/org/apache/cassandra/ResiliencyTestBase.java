@@ -29,6 +29,9 @@ import java.util.stream.IntStream;
 
 import com.google.common.collect.ImmutableMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
@@ -37,6 +40,7 @@ import org.apache.cassandra.sidecar.testing.IntegrationTestBase;
 import org.apache.cassandra.spark.KryoRegister;
 import org.apache.cassandra.spark.bulkwriter.BulkSparkConf;
 import org.apache.spark.SparkConf;
+import org.apache.spark.sql.DataFrameWriter;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SQLContext;
@@ -52,6 +56,7 @@ import static org.apache.spark.sql.types.DataTypes.StringType;
  */
 public abstract class ResiliencyTestBase extends IntegrationTestBase
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ResiliencyTestBase.class);
     private static final String createTableStmt = "create table if not exists %s (id int, course text, marks int, primary key (id));";
     private static final String retrieveRows = "select * from " + TEST_KEYSPACE + ".%s";
     private static final int rowCount = 1000;
@@ -125,5 +130,33 @@ public abstract class ResiliencyTestBase extends IntegrationTestBase
             rows.remove(expectedRow);
         }
         assertTrue(rows.isEmpty());
+    }
+
+    QualifiedTableName bulkWriteData()
+    {
+        ImmutableMap<String, Integer> rf = ImmutableMap.of("datacenter1", 3);
+        QualifiedTableName schema = initializeSchema(rf);
+
+        SparkConf sparkConf = generateSparkConf();
+        SparkSession spark = generateSparkSession(sparkConf);
+        Dataset<org.apache.spark.sql.Row> df = generateData(spark);
+
+        LOGGER.info("Spark Conf: " + sparkConf.toDebugString());
+
+        // A constant timestamp and TTL can be used by setting the following options.
+        // .option(WriterOptions.TTL.name(), TTLOption.constant(20))
+        // .option(WriterOptions.TIMESTAMP.name(), TimestampOption.constant(System.currentTimeMillis() * 1000))
+        DataFrameWriter<org.apache.spark.sql.Row> dfWriter = df.write()
+                                                               .format("org.apache.cassandra.spark.sparksql.CassandraDataSink")
+                                                               .option("sidecar_instances", "localhost,localhost2,localhost3")
+                                                               .option("sidecar_port", String.valueOf(server.actualPort()))
+                                                               .option("keyspace", schema.keyspace())
+                                                               .option("table", schema.tableName())
+                                                               .option("local_dc", "datacenter1")
+                                                               .option("bulk_writer_cl", "LOCAL_QUORUM")
+                                                               .option("number_splits", "-1")
+                                                               .mode("append");
+        dfWriter.save();
+        return schema;
     }
 }

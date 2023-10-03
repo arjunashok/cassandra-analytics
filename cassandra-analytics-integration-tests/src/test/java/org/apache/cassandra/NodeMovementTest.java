@@ -18,6 +18,7 @@
 
 package org.apache.cassandra;
 
+import java.io.IOException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
@@ -94,6 +95,102 @@ public class NodeMovementTest extends ResiliencyTestBase
         Session session = maybeGetSession();
         validateData(session, schema.tableName());
     }
+
+    @CassandraIntegrationTest(nodesPerDc = 5, network = true, gossip = true, buildCluster = false)
+    void moveNodeFailedDuringBulkWriteTest(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperMovingNodeFailure.reset();
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
+
+        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(builder -> {
+            builder.withInstanceInitializer(BBHelperMovingNodeFailure::install);
+            builder.withTokenSupplier(tokenSupplier);
+        });
+
+        QualifiedTableName schema;
+        long moveTarget = getMoveTargetToken(cluster);
+        int movingNodeIndex = MOVING_NODE_IDX;
+        IUpgradeableInstance movingNode = cluster.get(movingNodeIndex);
+
+        try
+        {
+            IUpgradeableInstance seed = cluster.get(1);
+            new Thread(() -> movingNode.nodetoolResult("move", "--", Long.toString(moveTarget))
+                                       .asserts()
+                                       .success()).start();
+
+            // Wait until nodes have reached expected state
+            Uninterruptibles.awaitUninterruptibly(BBHelperMovingNodeFailure.transientStateStart, 2, TimeUnit.MINUTES);
+            ClusterUtils.awaitRingState(seed, movingNode, "Moving");
+
+            schema = bulkWriteData();
+        }
+        finally
+        {
+            BBHelperMovingNodeFailure.transientStateEnd.countDown();
+        }
+
+        Session session = maybeGetSession();
+        validateData(session, schema.tableName());
+        ClusterUtils.awaitRingState(cluster.get(1), movingNode, "Moving");
+    }
+
+    /**
+     * ByteBuddy Helper for a single moving node
+     */
+    @Shared
+    public static class BBHelperMovingNodeFailure
+    {
+        static CountDownLatch transientStateStart = new CountDownLatch(1);
+        static CountDownLatch transientStateEnd = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Moving the 5th node in the test case
+            if (nodeNumber == MOVING_NODE_IDX)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.RangeRelocator")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("stream"))
+                               .intercept(MethodDelegation.to(BBHelperMovingNodeFailure.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+//        public static Future<?> move(@SuperCall Callable<?> orig) throws Exception
+//        {
+//            orig.call();
+//            transientStateStart.countDown();
+//            Uninterruptibles.awaitUninterruptibly(transientStateEnd);
+//
+//            throw new IOException("Simulated node movement failures");
+//        }
+
+        @SuppressWarnings("unused")
+        public static Future<?> stream(@SuperCall Callable<Future<?>> orig) throws Exception
+        {
+            Future<?> res = orig.call();
+            transientStateStart.countDown();
+            Uninterruptibles.awaitUninterruptibly(transientStateEnd);
+
+            throw new IOException("Simulated node movement failures"); // Throws exception to nodetool
+        }
+
+        public static void reset()
+        {
+            transientStateStart = new CountDownLatch(1);
+            transientStateEnd = new CountDownLatch(1);
+        }
+    }
+
 
     /**
      * ByteBuddy Helper for a single moving node

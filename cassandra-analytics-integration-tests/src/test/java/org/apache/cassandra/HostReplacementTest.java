@@ -62,7 +62,7 @@ public class HostReplacementTest extends ResiliencyTestBase
 {
 
     @CassandraIntegrationTest(nodesPerDc = 5, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
-    void retrieveMappingWithNodeReplacement(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    void nodeReplacementDuringBulkWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperReplacementsNode.reset();
 
@@ -174,6 +174,152 @@ public class HostReplacementTest extends ResiliencyTestBase
             transientStateStart.countDown();
             Uninterruptibles.awaitUninterruptibly(transientStateEnd);
             return result;
+        }
+
+        public static void reset()
+        {
+            nodeStart = new CountDownLatch(1);
+            transientStateStart = new CountDownLatch(1);
+            transientStateEnd = new CountDownLatch(1);
+        }
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 5, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
+    void nodeReplacementFailureDuringBulkWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperReplacementsNodeFailure.reset();
+
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
+        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(builder -> {
+            builder.withInstanceInitializer(BBHelperReplacementsNodeFailure::install);
+            builder.withTokenSupplier(tokenSupplier);
+        });
+
+        List<IUpgradeableInstance> nodesToRemove = Collections.singletonList(cluster.get(cluster.size()));
+        List<String> removedNodeAddresses = nodesToRemove.stream()
+                                                         .map(n ->
+                                                              n.config()
+                                                               .broadcastAddress()
+                                                               .getAddress()
+                                                               .getHostAddress())
+                                                         .collect(Collectors.toList());
+        QualifiedTableName schema = null;
+        List<IUpgradeableInstance> newNodes;
+        try
+        {
+            IUpgradeableInstance seed = cluster.get(1);
+
+            List<ClusterUtils.RingInstanceDetails> ring = ClusterUtils.ring(seed);
+            List<String> removedNodeTokens = ring.stream()
+                                                 .filter(i -> removedNodeAddresses.contains(i.getAddress()))
+                                                 .map(ClusterUtils.RingInstanceDetails::getToken)
+                                                 .collect(Collectors.toList());
+
+            stopNodes(seed, nodesToRemove);
+            newNodes = startReplacementNodes(BBHelperReplacementsNodeFailure.nodeStart, cluster, nodesToRemove);
+
+            // Wait until replacement nodes are in JOINING state
+            Uninterruptibles.awaitUninterruptibly(BBHelperReplacementsNodeFailure.transientStateStart, 2, TimeUnit.MINUTES);
+
+            // Verify state of replacement nodes
+            for (IUpgradeableInstance newInstance : newNodes)
+            {
+                ClusterUtils.awaitRingState(newInstance, newInstance, "Joining");
+                ClusterUtils.awaitGossipStatus(newInstance, newInstance, "BOOT_REPLACE");
+
+                String newAddress = newInstance.config().broadcastAddress().getAddress().getHostAddress();
+
+                Optional<ClusterUtils.RingInstanceDetails> replacementInstance =
+                getMatchingInstanceFromRing(seed, newAddress);
+                assertThat(replacementInstance).isPresent();
+                // Verify that replacement node tokens match the removed nodes
+                assertThat(removedNodeTokens).contains(replacementInstance.get().getToken());
+                schema = bulkWriteData();
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < (annotation.newNodesPerDc() * annotation.numDcs()); i++)
+            {
+                BBHelperReplacementsNodeFailure.transientStateEnd.countDown();
+            }
+        }
+
+        Session session = maybeGetSession();
+        validateData(session, schema.tableName());
+
+        Optional<ClusterUtils.RingInstanceDetails> replacementNode =
+        getMatchingInstanceFromRing(cluster.get(1), newNodes.get(0).broadcastAddress().getAddress().getHostAddress());
+        // Validate that the replacement node did not succeed in joining (if still visible in ring)
+        if (replacementNode.isPresent())
+        {
+            assertThat(replacementNode.get().getState()).isNotEqualTo("Normal");
+        }
+
+        Optional<ClusterUtils.RingInstanceDetails> removedNode =
+        getMatchingInstanceFromRing(cluster.get(1), removedNodeAddresses.get(0));
+        // Validate that the removed node is "Down" (if still visible in ring)
+        if (removedNode.isPresent())
+        {
+            assertThat(removedNode.get().getStatus()).isEqualTo("Down");
+        }
+    }
+
+    private Optional<ClusterUtils.RingInstanceDetails> getMatchingInstanceFromRing(IUpgradeableInstance seed, String newAddress)
+    {
+        return ClusterUtils.ring(seed)
+                           .stream()
+                           .filter(
+                           i -> i.getAddress()
+                                 .equals(newAddress))
+                           .findFirst();
+    }
+
+    /**
+     * ByteBuddy helper for a single node replacement
+     */
+    @Shared
+    public static class BBHelperReplacementsNodeFailure
+    {
+        // Additional latch used here to sequentially start the 2 new nodes to isolate the loading
+        // of the shared Cassandra system property REPLACE_ADDRESS_FIRST_BOOT across instances
+        static CountDownLatch nodeStart = new CountDownLatch(1);
+        static CountDownLatch transientStateStart = new CountDownLatch(1);
+        static CountDownLatch transientStateEnd = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 5 node cluster with a replacement node
+            // We intercept the bootstrap of the replacement (6th) node to validate token ranges
+            if (nodeNumber == 6)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperReplacementsNodeFailure.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            nodeStart.countDown();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            transientStateStart.countDown();
+            Uninterruptibles.awaitUninterruptibly(transientStateEnd);
+            throw new UnsupportedOperationException("Simulated failure");
+            // return result;
         }
 
         public static void reset()

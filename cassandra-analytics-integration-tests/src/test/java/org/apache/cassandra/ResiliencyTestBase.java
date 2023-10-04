@@ -18,12 +18,15 @@
 
 package org.apache.cassandra;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -32,13 +35,20 @@ import com.google.common.collect.ImmutableMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.ConsistencyLevel;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import org.apache.cassandra.distributed.UpgradeableCluster;
+import org.apache.cassandra.distributed.api.TokenSupplier;
 import org.apache.cassandra.sidecar.common.data.QualifiedTableName;
 import org.apache.cassandra.sidecar.testing.IntegrationTestBase;
 import org.apache.cassandra.spark.KryoRegister;
 import org.apache.cassandra.spark.bulkwriter.BulkSparkConf;
+import org.apache.cassandra.testing.CassandraIntegrationTest;
+import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
 import org.apache.spark.SparkConf;
 import org.apache.spark.sql.DataFrameWriter;
 import org.apache.spark.sql.Dataset;
@@ -48,6 +58,8 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.StructType;
 
 import static junit.framework.TestCase.assertTrue;
+import static org.apache.cassandra.distributed.shared.NetworkTopology.dcAndRack;
+import static org.apache.cassandra.distributed.shared.NetworkTopology.networkTopology;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 
@@ -107,9 +119,12 @@ public abstract class ResiliencyTestBase extends IntegrationTestBase
         return sql.createDataFrame(rows, schema);
     }
 
-    public void validateData(Session session, String tableName)
+    public void validateData(Session session, String tableName, ConsistencyLevel cl)
     {
-        ResultSet resultSet = session.execute(String.format(retrieveRows, tableName));
+        PreparedStatement preparedStatement = session.prepare(String.format(retrieveRows, tableName));
+        preparedStatement.setConsistencyLevel(cl);
+        BoundStatement boundStatement = preparedStatement.bind();
+        ResultSet resultSet = session.execute(boundStatement);
         Set<String> rows = new HashSet<>();
         for (Row row : resultSet.all())
         {
@@ -130,6 +145,41 @@ public abstract class ResiliencyTestBase extends IntegrationTestBase
             rows.remove(expectedRow);
         }
         assertTrue(rows.isEmpty());
+    }
+
+    protected UpgradeableCluster getMultiDCCluster(BiConsumer<ClassLoader, Integer> initializer,
+                                                   ConfigurableCassandraTestContext cassandraTestContext)
+    throws IOException
+    {
+        return getMultiDCCluster(initializer, cassandraTestContext, null);
+    }
+
+    protected UpgradeableCluster getMultiDCCluster(BiConsumer<ClassLoader, Integer> initializer,
+                                                   ConfigurableCassandraTestContext cassandraTestContext,
+                                                   Consumer<UpgradeableCluster.Builder> additionalConfigurator)
+    throws IOException
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier mdcTokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                   annotation.newNodesPerDc(),
+                                                                                   annotation.numDcs(),
+                                                                                   1);
+
+        int totalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
+        return cassandraTestContext.configureAndStartCluster(
+        builder -> {
+            builder.withInstanceInitializer(initializer);
+            builder.withTokenSupplier(mdcTokenSupplier);
+            builder.withNodeIdTopology(networkTopology(totalNodeCount,
+                                                       (nodeId) -> nodeId % 2 != 0 ?
+                                                                   dcAndRack("datacenter1", "rack1") :
+                                                                   dcAndRack("datacenter2", "rack2")));
+
+            if (additionalConfigurator != null)
+            {
+                additionalConfigurator.accept(builder);
+            }
+        });
     }
 
     QualifiedTableName bulkWriteData()

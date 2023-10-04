@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.util.concurrent.Uninterruptibles;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Session;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.type.TypeDescription;
@@ -131,7 +132,7 @@ public class HostReplacementTest extends ResiliencyTestBase
 
         ClusterUtils.awaitRingState(cluster.get(1), newNodes.get(0), "Normal");
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.QUORUM);
     }
 
     /**
@@ -250,7 +251,7 @@ public class HostReplacementTest extends ResiliencyTestBase
         }
 
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.QUORUM);
 
         Optional<ClusterUtils.RingInstanceDetails> replacementNode =
         getMatchingInstanceFromRing(cluster.get(1), newNodes.get(0).broadcastAddress().getAddress().getHostAddress());

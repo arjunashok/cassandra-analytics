@@ -44,7 +44,7 @@ public class TestTokenSupplier
      * @param numTokensPerNode no. tokens allocated to each node (this is always 1 if there are no vnodes)
      * @return The token supplier that vends the tokens
      */
-    static TokenSupplier evenlyDistributedTokens(int numNodesPerDC, int newNodesPerDC, int numDcs, int numTokensPerNode)
+    public static TokenSupplier evenlyDistributedTokens(int numNodesPerDC, int newNodesPerDC, int numDcs, int numTokensPerNode)
     {
         // Use token count using initial node count to first assign tokens to nodes
         long totalTokens = (long) (numNodesPerDC) * numDcs * numTokensPerNode;

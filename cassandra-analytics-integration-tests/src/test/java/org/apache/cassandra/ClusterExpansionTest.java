@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.Uninterruptibles;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Session;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.type.TypeDescription;
@@ -59,7 +60,7 @@ public class ClusterExpansionTest extends ResiliencyTestBase
         QualifiedTableName schema = bulkWriteData();
 
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.EACH_QUORUM);
     }
 
     @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, gossip = true, network = true)
@@ -151,7 +152,7 @@ public class ClusterExpansionTest extends ResiliencyTestBase
             }
         }
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.EACH_QUORUM);
     }
 
     /**

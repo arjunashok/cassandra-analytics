@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.Uninterruptibles;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Session;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.type.TypeDescription;
@@ -93,7 +94,7 @@ public class NodeMovementTest extends ResiliencyTestBase
 
         ClusterUtils.awaitRingState(cluster.get(1), movingNode, "Normal");
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.QUORUM);
     }
 
     @CassandraIntegrationTest(nodesPerDc = 5, network = true, gossip = true, buildCluster = false)
@@ -135,7 +136,7 @@ public class NodeMovementTest extends ResiliencyTestBase
         }
 
         Session session = maybeGetSession();
-        validateData(session, schema.tableName());
+        validateData(session, schema.tableName(), ConsistencyLevel.QUORUM);
         ClusterUtils.awaitRingState(cluster.get(1), movingNode, "Moving");
     }
 

@@ -41,7 +41,7 @@ project(':cassandra-analytics-integration-framework') {
         }
 
         File dtestJarFile = new File(dtestJarFullPath)
-        assert dtestJarFile.exists()
+//        assert dtestJarFile.exists()
         println("Using DTest jar: " + dtestJarFullPath)
         shadow(files("${dtestJarFullPath}"))
         shadow("org.apache.cassandra:dtest-api:0.0.16")

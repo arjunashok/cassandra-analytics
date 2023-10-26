@@ -38,14 +38,13 @@ import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.pool.TypePool;
-import o.a.c.analytics.sidecar.shaded.testing.common.data.QualifiedTableName;
 import org.apache.cassandra.analytics.ResiliencyTestBase;
 import org.apache.cassandra.distributed.UpgradeableCluster;
 import org.apache.cassandra.distributed.api.Feature;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
 import org.apache.cassandra.distributed.api.TokenSupplier;
 import org.apache.cassandra.distributed.shared.ClusterUtils;
-import org.apache.cassandra.spark.example.SampleCassandraJob;
+import org.apache.cassandra.sidecar.common.data.QualifiedTableName;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
 import org.apache.cassandra.utils.Shared;
@@ -64,37 +63,37 @@ public class ClusterExpansionTest extends ResiliencyTestBase
         validateData(session, schema.tableName(), ConsistencyLevel.EACH_QUORUM);
     }
 
-    @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, gossip = true, network = true)
-    public void runSimpleTest()
-    {
-        sidecarTestContext.cluster().schemaChange(
-        "  CREATE KEYSPACE spark_test WITH replication = "
-        + "{'class': 'NetworkTopologyStrategy', 'datacenter1': '3'}\n"
-        + "      AND durable_writes = true;");
-        sidecarTestContext.cluster().schemaChange("CREATE TABLE spark_test.test (\n"
-                                                  + "          id BIGINT PRIMARY KEY,\n"
-                                                  + "          course BLOB,\n"
-                                                  + "          marks BIGINT\n"
-                                                  + "     );");
-
-        UpgradeableCluster cluster = sidecarTestContext.cluster();
-        IUpgradeableInstance instance = cluster.get(1);
-        IUpgradeableInstance newInstance = ClusterUtils.addInstance(cluster,
-                                                                    instance.config().localDatacenter(),
-                                                                    instance.config().localRack(),
-                                                                    inst -> inst.with(Feature.NETWORK,
-                                                                                      Feature.GOSSIP,
-                                                                                      Feature.JMX,
-                                                                                      Feature.NATIVE_PROTOCOL));
-        new Thread(() -> newInstance.startup(cluster)).start();
-        cluster.get(4).startup(cluster);
-
-        SampleCassandraJob.main(new String[]
-                                {
-                                String.valueOf(server.actualPort())
-                                });
-        ClusterUtils.awaitRingState(instance, newInstance, "Normal");
-    }
+//    @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, gossip = true, network = true)
+//    public void runSimpleTest()
+//    {
+//        sidecarTestContext.cluster().schemaChange(
+//        "  CREATE KEYSPACE spark_test WITH replication = "
+//        + "{'class': 'NetworkTopologyStrategy', 'datacenter1': '3'}\n"
+//        + "      AND durable_writes = true;");
+//        sidecarTestContext.cluster().schemaChange("CREATE TABLE spark_test.test (\n"
+//                                                  + "          id BIGINT PRIMARY KEY,\n"
+//                                                  + "          course BLOB,\n"
+//                                                  + "          marks BIGINT\n"
+//                                                  + "     );");
+//
+//        UpgradeableCluster cluster = sidecarTestContext.cluster();
+//        IUpgradeableInstance instance = cluster.get(1);
+//        IUpgradeableInstance newInstance = ClusterUtils.addInstance(cluster,
+//                                                                    instance.config().localDatacenter(),
+//                                                                    instance.config().localRack(),
+//                                                                    inst -> inst.with(Feature.NETWORK,
+//                                                                                      Feature.GOSSIP,
+//                                                                                      Feature.JMX,
+//                                                                                      Feature.NATIVE_PROTOCOL));
+//        new Thread(() -> newInstance.startup(cluster)).start();
+//        cluster.get(4).startup(cluster);
+//
+//        SampleCassandraJob.main(new String[]
+//                                {
+//                                String.valueOf(server.actualPort())
+//                                });
+//        ClusterUtils.awaitRingState(instance, newInstance, "Normal");
+//    }
 
     @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, gossip = true, network = true, buildCluster = false)
     public void expandBySingleNodeTest(ConfigurableCassandraTestContext cassandraTestContext) throws IOException

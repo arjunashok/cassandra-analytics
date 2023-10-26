@@ -65,7 +65,6 @@ project(':cassandra-analytics-integration-tests') {
         systemProperty "logback.configurationFile", "src/test/resources/logback-test.xml"
         minHeapSize = '1024m'
         maxHeapSize = '3072m'
-
         // For now, keep maxParallelForks at 1 until we can fix dynamic port allocation across forks
         maxParallelForks = 1
         // maxParallelForks = Math.max(Runtime.runtime.availableProcessors() * 2, 8)

@@ -106,6 +106,7 @@ public abstract class IntegrationTestBase
 
         server.start()
               .onSuccess(s -> {
+                  logger.info("Started Sidecar on port={}", server.actualPort());
                   sidecarTestContext.registerInstanceConfigListener(this::healthCheck);
                   if (!sidecarTestContext.isClusterBuilt())
                   {

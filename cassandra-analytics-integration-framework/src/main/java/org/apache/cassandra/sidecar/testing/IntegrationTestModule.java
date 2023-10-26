@@ -58,6 +58,7 @@ public class IntegrationTestModule extends AbstractModule
         /**
          * @return metadata of instances owned by the sidecar
          */
+        @Override
         public List<InstanceMetadata> instances()
         {
             if (cassandraTestContext != null && cassandraTestContext.isClusterBuilt())
@@ -74,6 +75,7 @@ public class IntegrationTestModule extends AbstractModule
          * @return instance meta information
          * @throws NoSuchElementException when the instance with {@code id} does not exist
          */
+        @Override
         public InstanceMetadata instanceFromId(int id) throws NoSuchElementException
         {
             return cassandraTestContext.instancesConfig().instanceFromId(id);
@@ -86,6 +88,7 @@ public class IntegrationTestModule extends AbstractModule
          * @return instance meta information
          * @throws NoSuchElementException when the instance for {@code host} does not exist
          */
+        @Override
         public InstanceMetadata instanceFromHost(String host) throws NoSuchElementException
         {
             return cassandraTestContext.instancesConfig().instanceFromHost(host);
@@ -98,7 +101,7 @@ public class IntegrationTestModule extends AbstractModule
     {
         ServiceConfiguration conf = ServiceConfigurationImpl.builder()
                                                             .host("127.0.0.1")
-                                                            .port(0) // let the test find an available port
+//                                                            .port(0) // let the test find an available port
                                                             .build();
         HealthCheckConfiguration healthCheckConfiguration = new HealthCheckConfigurationImpl(50, 500);
         return SidecarConfigurationImpl.builder()

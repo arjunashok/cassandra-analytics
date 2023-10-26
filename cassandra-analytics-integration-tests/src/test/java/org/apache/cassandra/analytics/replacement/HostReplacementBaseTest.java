@@ -45,6 +45,7 @@ import org.apache.cassandra.sidecar.common.data.QualifiedTableName;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class HostReplacementBaseTest extends ResiliencyTestBase

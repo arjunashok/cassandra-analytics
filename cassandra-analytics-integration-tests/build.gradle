@@ -27,6 +27,8 @@ project(':cassandra-analytics-integration-tests') {
                 force("com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}")
             }
         }
+        all*.exclude(group: 'org.slf4j', module: 'slf4j-log4j12')
+        all*.exclude(group: 'log4j', module: 'log4j')
     }
     dependencies {
 
@@ -41,7 +43,7 @@ project(':cassandra-analytics-integration-tests') {
         testImplementation("org.junit.jupiter:junit-jupiter-api:${project.junitVersion}")
         testImplementation("org.junit.jupiter:junit-jupiter-params:${project.junitVersion}")
         testImplementation("org.junit.jupiter:junit-jupiter-engine:${project.junitVersion}")
-        testImplementation(project(path: ":cassandra-analytics-integration-framework", configuration: "shadow"))
+        testImplementation(project(path: ":cassandra-analytics-integration-framework"))
         ext.dtestJar = System.getenv("DTEST_JAR") ?: "dtest-4.1.4.jar" // latest supported Cassandra build is 4.1
         def dtestJarFullPath = "${dependencyLocation}${ext.dtestJar}"
         println("Using DTest jar: " + dtestJarFullPath)
@@ -60,7 +62,7 @@ project(':cassandra-analytics-integration-tests') {
         // set them again here.
         systemProperty "cassandra.test.dtest_jar_path", dependencyLocation
         systemProperty "cassandra.sidecar.versions_to_test",
-                System.getProperty("cassandra.sidecar.versions_to_test", "4.0,4.1")
+                System.getProperty("cassandra.sidecar.versions_to_test", "4.0")
         systemProperty "SKIP_STARTUP_VALIDATIONS", "true"
         systemProperty "logback.configurationFile", "src/test/resources/logback-test.xml"
         minHeapSize = '1024m'

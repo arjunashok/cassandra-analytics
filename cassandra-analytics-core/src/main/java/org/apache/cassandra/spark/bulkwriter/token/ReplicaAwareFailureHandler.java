@@ -189,7 +189,7 @@ public class ReplicaAwareFailureHandler<Instance extends CassandraInstance>
         return isConsistencyLevelMet;
     }
 
-    public boolean hasFailed(TokenRangeMapping<Instance> tokenRange,
+    public boolean hasFailed(TokenRangeMapping<? extends CassandraInstance> tokenRange,
                              ConsistencyLevel cl,
                              String localDC)
     {

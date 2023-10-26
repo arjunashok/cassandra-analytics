@@ -16,8 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.nio.file.Paths
+
 project(':cassandra-analytics-integration-framework') {
     apply(plugin: 'java-library')
+    apply(plugin: 'com.github.johnrengelman.shadow')
 
     ext.dtestJar = System.getenv("DTEST_JAR") ?: "dtest-4.1.4.jar" // latest supported Cassandra build is 4.1
     def dtestJarFullPath = "${dependencyLocation}${ext.dtestJar}"
@@ -25,10 +30,10 @@ project(':cassandra-analytics-integration-framework') {
     dependencies {
 
         // These dependencies (sidecar + dtest jars) must be built by running `scripts/build-dependencies.sh`
-        api(group: 'org.apache.cassandra.sidecar', name: 'common', version: "${sidecarVersion}")
-        api(group: 'org.apache.cassandra.sidecar', name: 'adapters-base', version: "${sidecarVersion}")
+        implementation(group: 'org.apache.cassandra.sidecar', name: 'common', version: "${sidecarVersion}")
+        implementation(group: 'org.apache.cassandra.sidecar', name: 'adapters-base', version: "${sidecarVersion}")
         // The server itself
-        api(group: "org.apache.cassandra", name: "cassandra-sidecar", version: "${sidecarVersion}") {
+        implementation (group: "org.apache.cassandra", name: "cassandra-sidecar", version: "${sidecarVersion}") {
             exclude(group: 'org.apache.logging.log4j')
             exclude(group: 'org.slf4j')
             exclude(group: 'ch.qos.logback')
@@ -37,8 +42,8 @@ project(':cassandra-analytics-integration-framework') {
         File dtestJarFile = new File(dtestJarFullPath)
         assert dtestJarFile.exists()
         println("Using DTest jar: " + dtestJarFullPath)
-        implementation(files("${dtestJarFullPath}"))
-        implementation("org.apache.cassandra:dtest-api:0.0.16")
+        shadow(files("${dtestJarFullPath}"))
+        shadow("org.apache.cassandra:dtest-api:0.0.16")
         // Needed by the Cassandra dtest framework
         // JUnit
         api("org.junit.jupiter:junit-jupiter-api:${project.junitVersion}")
@@ -49,10 +54,21 @@ project(':cassandra-analytics-integration-framework') {
         api('org.mockito:mockito-inline:4.10.0')
         api("org.assertj:assertj-core:3.24.2")
 
-        api('com.datastax.cassandra:cassandra-driver-core:3.9.0')
+        shadow('com.datastax.cassandra:cassandra-driver-core:3.9.0')
 
-        api('com.google.inject:guice:4.2.2')
-        api("io.vertx:vertx-web-client:${project.vertxVersion}")
-        api("io.vertx:vertx-junit5:${project.vertxVersion}")
+        shadow("com.google.guava:guava:27.0.1-jre")
+        shadow('com.google.inject:guice:4.2.2')
+        shadow("io.vertx:vertx-web:${project.vertxVersion}") {
+            exclude group: 'junit', module: 'junit'
+        }
+        shadow("io.vertx:vertx-web-client:${project.vertxVersion}")
+        shadow("io.vertx:vertx-junit5:${project.vertxVersion}")
+    }
+
+    shadowJar {
+        zip64 true
+        relocate('org.apache.cassandra.sidecar', 'o.a.c.analytics.sidecar.shaded.testing') {
+            exclude '%regex[org.apache.cassandra.sidecar.testing.*]'
+        }
     }
 }

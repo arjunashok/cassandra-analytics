@@ -100,10 +100,10 @@ public class IntegrationTestModule extends AbstractModule
     public SidecarConfiguration sidecarConfiguration()
     {
         ServiceConfiguration conf = ServiceConfigurationImpl.builder()
-                                                            .host("127.0.0.1")
-//                                                            .port(0) // let the test find an available port
+                                                            .host("0.0.0.0") // binds to all interfaces, potential security issue if left running for long
+                                                            .port(0) // let the test find an available port
                                                             .build();
-        HealthCheckConfiguration healthCheckConfiguration = new HealthCheckConfigurationImpl(50, 500);
+        HealthCheckConfiguration healthCheckConfiguration = new HealthCheckConfigurationImpl(50, 1000);
         return SidecarConfigurationImpl.builder()
                                        .serviceConfiguration(conf)
                                        .healthCheckConfiguration(healthCheckConfiguration)

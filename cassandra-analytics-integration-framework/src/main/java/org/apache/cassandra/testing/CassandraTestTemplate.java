@@ -160,7 +160,7 @@ public class CassandraTestTemplate implements TestTemplateInvocationContextProvi
                 UpgradeableCluster.Builder clusterBuilder =
                 UpgradeableCluster.build(originalNodeCount)
                                   // Disabling dynamic port allocaiton until we can get it working across JVM forks
-                                  //.withDynamicPortAllocation(true) // to allow parallel test runs
+                                  .withDynamicPortAllocation(true) // to allow parallel test runs
                                   .withVersion(requestedVersion)
                                   .withDCs(dcCount)
                                   .withDataDirCount(annotation.numDataDirsPerInstance())

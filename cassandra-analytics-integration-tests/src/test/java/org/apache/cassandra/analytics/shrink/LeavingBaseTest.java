@@ -20,7 +20,9 @@ package org.apache.cassandra.analytics.shrink;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -39,7 +41,9 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
+import static junit.framework.TestCase.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 class LeavingBaseTest extends ResiliencyTestBase
 {
@@ -53,11 +57,12 @@ class LeavingBaseTest extends ResiliencyTestBase
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
         QualifiedTableName table;
+        List<IUpgradeableInstance> leavingNodes = new ArrayList<>();
         try
         {
             IUpgradeableInstance seed = cluster.get(1);
 
-            List<IUpgradeableInstance> leavingNodes = new ArrayList<>();
+
             for (int i = 0; i < leavingNodesPerDC * annotation.numDcs(); i++)
             {
                 IUpgradeableInstance node = cluster.get(cluster.size() - i);
@@ -97,8 +102,9 @@ class LeavingBaseTest extends ResiliencyTestBase
             Session session = maybeGetSession();
             assertNotNull(table);
             validateData(session, table.tableName(), readCL);
-            // TODO: node normal state
-            // TODO: transient node got the data
+
+            // check leave node are part of cluster when leave fails
+            assertTrue(areLeavingNodesPartOfCluster(cluster.get(1), leavingNodes));
         }
     }
 
@@ -138,11 +144,21 @@ class LeavingBaseTest extends ResiliencyTestBase
             dfWriter.option("local_dc", "datacenter1");
         }
 
+        dfWriter.save();
         for (int i = 0; i < leavingNodesPerDC; i++)
         {
             transientStateEnd.countDown();
         }
-        dfWriter.save();
         return schema;
+    }
+
+    private boolean areLeavingNodesPartOfCluster(IUpgradeableInstance seed, List<IUpgradeableInstance> leavingNodes)
+    {
+        Set<String> leavingAddresses = leavingNodes.stream()
+                                                   .map(node -> node.broadcastAddress().getAddress().getHostAddress())
+                                                   .collect(Collectors.toSet());
+        ClusterUtils.ring(seed)
+                    .forEach(i -> leavingAddresses.remove(i.getAddress()));
+        return leavingAddresses.isEmpty();
     }
 }

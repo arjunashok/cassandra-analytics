@@ -87,7 +87,7 @@ public class JoiningTestMultiDCSingleReplicated extends JoiningBaseTest
                                cluster,
                                false,
                                ConsistencyLevel.LOCAL_QUORUM,
-                               ConsistencyLevel.ONE,
+                               ConsistencyLevel.LOCAL_QUORUM,
                                false);
     }
 

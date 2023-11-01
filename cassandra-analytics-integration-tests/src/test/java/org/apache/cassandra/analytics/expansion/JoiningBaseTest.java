@@ -20,9 +20,11 @@ package org.apache.cassandra.analytics.expansion;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -45,6 +47,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
+import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertNotNull;
 
 public class JoiningBaseTest extends ResiliencyTestBase
@@ -59,11 +62,11 @@ public class JoiningBaseTest extends ResiliencyTestBase
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
         QualifiedTableName table = null;
+        List<IUpgradeableInstance> newInstances = new ArrayList<>();
         try
         {
             IUpgradeableInstance seed = cluster.get(1);
 
-            List<IUpgradeableInstance> newInstances = new ArrayList<>();
             // Go over new nodes and add them once for each DC
             for (int i = 0; i < annotation.newNodesPerDc(); i++)
             {
@@ -99,6 +102,23 @@ public class JoiningBaseTest extends ResiliencyTestBase
                 assertNotNull(table);
                 validateData(session, table.tableName(), readCL);
             }
+            else
+            {
+                table = bulkWriteData(isCrossDCKeyspace, writeCL, transientStateEnd);
+                Session session = maybeGetSession();
+                assertNotNull(table);
+                validateData(session, table.tableName(), readCL);
+
+                Thread.sleep(2000);
+
+                // check join node not part of cluster when join fails
+                boolean val = areJoiningNodesPartOfCluster(cluster.getFirstRunningInstance(), newInstances);
+                assertFalse(val);
+            }
+        }
+        catch (InterruptedException | IllegalArgumentException e)
+        {
+            throw new RuntimeException(e);
         }
         finally
         {
@@ -109,16 +129,6 @@ public class JoiningBaseTest extends ResiliencyTestBase
                     transientStateEnd.countDown();
                 }
             }
-        }
-
-        if (isFailure)
-        {
-            table = bulkWriteData(isCrossDCKeyspace, writeCL, transientStateEnd);
-            Session session = maybeGetSession();
-            assertNotNull(table);
-            validateData(session, table.tableName(), readCL);
-            // TODO: join node not part of cluster
-            // TODO: transient join node to have the data ?
         }
     }
 
@@ -188,11 +198,23 @@ public class JoiningBaseTest extends ResiliencyTestBase
             dfWriter.option("local_dc", "datacenter1");
         }
 
+        dfWriter.save();
         for (int i = 0; i < (annotation.newNodesPerDc() * annotation.numDcs()); i++)
         {
             transientStateEnd.countDown();
         }
-        dfWriter.save();
         return schema;
+    }
+
+    private boolean areJoiningNodesPartOfCluster(IUpgradeableInstance seed, List<IUpgradeableInstance> joiningNodes)
+    {
+        Set<String> joiningAddresses = joiningNodes.stream()
+                                                   .map(node -> node.broadcastAddress().getAddress().getHostAddress())
+                                                   .collect(Collectors.toSet());
+        return ClusterUtils.ring(seed)
+                           .stream()
+                           .anyMatch(i -> {
+                               return joiningAddresses.contains(i.getAddress());
+                           });
     }
 }

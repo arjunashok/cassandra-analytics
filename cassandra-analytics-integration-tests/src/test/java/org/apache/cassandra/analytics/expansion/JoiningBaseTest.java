@@ -20,7 +20,6 @@ package org.apache.cassandra.analytics.expansion;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
@@ -46,7 +45,6 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
-import static junit.framework.TestCase.assertTrue;
 import static junit.framework.TestCase.assertNotNull;
 
 public class JoiningBaseTest extends ResiliencyTestBase
@@ -61,7 +59,6 @@ public class JoiningBaseTest extends ResiliencyTestBase
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
         QualifiedTableName table = null;
-        List<IUpgradeableInstance> existingInstances = new ArrayList<>();
         List<IUpgradeableInstance> newInstances = new ArrayList<>();
         try
         {
@@ -74,7 +71,6 @@ public class JoiningBaseTest extends ResiliencyTestBase
                 for (int dc = 1; dc <= annotation.numDcs(); dc++)
                 {
                     IUpgradeableInstance dcNode = cluster.get(dcNodeIdx++);
-                    existingInstances.add(dcNode);
                     IUpgradeableInstance newInstance = ClusterUtils.addInstance(cluster,
                                                                                 dcNode.config().localDatacenter(),
                                                                                 dcNode.config().localRack(),
@@ -109,21 +105,11 @@ public class JoiningBaseTest extends ResiliencyTestBase
                 assertNotNull(table);
                 validateData(session, table.tableName(), readCL);
 
-                Thread.sleep(5000);
-
-                // check join node not part of cluster when join fails
                 for (IUpgradeableInstance joiningNode : newInstances)
                 {
-                    Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail = joiningNodeDetail(existingInstances, joiningNode.broadcastAddress()
-                                                                                                                                   .getAddress()
-                                                                                                                                   .getHostAddress());
-                    assertTrue(joiningNodeDetail.isEmpty() || joiningNodeDetail.get().getStatus().equals("DOWN"));
+                    ClusterUtils.awaitRingState(cluster.get(1), joiningNode, "Joining");
                 }
             }
-        }
-        catch (InterruptedException e)
-        {
-            throw new RuntimeException(e);
         }
         finally
         {
@@ -203,27 +189,11 @@ public class JoiningBaseTest extends ResiliencyTestBase
             dfWriter.option("local_dc", "datacenter1");
         }
 
-        dfWriter.save();
         for (int i = 0; i < (annotation.newNodesPerDc() * annotation.numDcs()); i++)
         {
             transientStateEnd.countDown();
         }
+        dfWriter.save();
         return schema;
-    }
-
-    private Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail(List<IUpgradeableInstance> existingInstances, String ipAddress)
-    {
-        for (IUpgradeableInstance instance : existingInstances)
-        {
-            Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail = ClusterUtils.ring(instance)
-                                                                                       .stream()
-                                                                                       .filter(i -> i.getAddress().equals(ipAddress))
-                                                                                       .findFirst();
-            if (joiningNodeDetail.isPresent())
-            {
-                return joiningNodeDetail;
-            }
-        }
-        return Optional.empty();
     }
 }

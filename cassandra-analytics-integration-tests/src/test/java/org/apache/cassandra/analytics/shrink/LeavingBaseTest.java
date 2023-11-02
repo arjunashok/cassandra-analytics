@@ -143,11 +143,11 @@ class LeavingBaseTest extends ResiliencyTestBase
             dfWriter.option("local_dc", "datacenter1");
         }
 
-        dfWriter.save();
         for (int i = 0; i < leavingNodesPerDC; i++)
         {
             transientStateEnd.countDown();
         }
+        dfWriter.save();
         return schema;
     }
 
@@ -156,8 +156,7 @@ class LeavingBaseTest extends ResiliencyTestBase
         Set<String> leavingAddresses = leavingNodes.stream()
                                                    .map(node -> node.broadcastAddress().getAddress().getHostAddress())
                                                    .collect(Collectors.toSet());
-        ClusterUtils.ring(seed)
-                    .forEach(i -> leavingAddresses.remove(i.getAddress()));
+        ClusterUtils.ring(seed).forEach(i -> leavingAddresses.remove(i.getAddress()));
         return leavingAddresses.isEmpty();
     }
 }

@@ -61,6 +61,22 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
     }
 
     @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
+    void allReadOneWriteFailure(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperHalveClusterMultiDCFailure.reset();
+        int leavingNodesPerDC = 3;
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDCFailure::install, cassandraTestContext);
+
+        runLeavingTestScenario(leavingNodesPerDC,
+                               BBHelperHalveClusterMultiDCFailure.transientStateStart,
+                               BBHelperHalveClusterMultiDCFailure.transientStateEnd,
+                               cluster,
+                               ConsistencyLevel.ALL,
+                               ConsistencyLevel.ONE,
+                               false);
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
     void localQuorumReadLocalQuorumWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperHalveClusterMultiDC.reset();
@@ -70,6 +86,22 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
         runLeavingTestScenario(leavingNodesPerDC,
                                BBHelperHalveClusterMultiDC.transientStateStart,
                                BBHelperHalveClusterMultiDC.transientStateEnd,
+                               cluster,
+                               ConsistencyLevel.LOCAL_QUORUM,
+                               ConsistencyLevel.LOCAL_QUORUM,
+                               false);
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
+    void localQuorumReadLocalQuorumWriteFailure(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperHalveClusterMultiDCFailure.reset();
+        int leavingNodesPerDC = 3;
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDCFailure::install, cassandraTestContext);
+
+        runLeavingTestScenario(leavingNodesPerDC,
+                               BBHelperHalveClusterMultiDCFailure.transientStateStart,
+                               BBHelperHalveClusterMultiDCFailure.transientStateEnd,
                                cluster,
                                ConsistencyLevel.LOCAL_QUORUM,
                                ConsistencyLevel.LOCAL_QUORUM,
@@ -93,6 +125,22 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
     }
 
     @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
+    void localQuorumReadEachQuorumWriteFailure(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperHalveClusterMultiDCFailure.reset();
+        int leavingNodesPerDC = 3;
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDCFailure::install, cassandraTestContext);
+
+        runLeavingTestScenario(leavingNodesPerDC,
+                               BBHelperHalveClusterMultiDCFailure.transientStateStart,
+                               BBHelperHalveClusterMultiDCFailure.transientStateEnd,
+                               cluster,
+                               ConsistencyLevel.LOCAL_QUORUM,
+                               ConsistencyLevel.EACH_QUORUM,
+                               false);
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
     void quorumReadQuorumWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperHalveClusterMultiDC.reset();
@@ -109,6 +157,22 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
     }
 
     @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
+    void quorumReadQuorumWriteFailure(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperHalveClusterMultiDCFailure.reset();
+        int leavingNodesPerDC = 3;
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDCFailure::install, cassandraTestContext);
+
+        runLeavingTestScenario(leavingNodesPerDC,
+                               BBHelperHalveClusterMultiDCFailure.transientStateStart,
+                               BBHelperHalveClusterMultiDCFailure.transientStateEnd,
+                               cluster,
+                               ConsistencyLevel.QUORUM,
+                               ConsistencyLevel.QUORUM,
+                               false);
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
     void oneReadAllWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperHalveClusterMultiDC.reset();
@@ -118,6 +182,22 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
         runLeavingTestScenario(leavingNodesPerDC,
                                BBHelperHalveClusterMultiDC.transientStateStart,
                                BBHelperHalveClusterMultiDC.transientStateEnd,
+                               cluster,
+                               ConsistencyLevel.ONE,
+                               ConsistencyLevel.ALL,
+                               false);
+    }
+
+    @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
+    void oneReadAllWriteFailure(ConfigurableCassandraTestContext cassandraTestContext) throws Exception
+    {
+        BBHelperHalveClusterMultiDCFailure.reset();
+        int leavingNodesPerDC = 3;
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDCFailure::install, cassandraTestContext);
+
+        runLeavingTestScenario(leavingNodesPerDC,
+                               BBHelperHalveClusterMultiDCFailure.transientStateStart,
+                               BBHelperHalveClusterMultiDCFailure.transientStateEnd,
                                cluster,
                                ConsistencyLevel.ONE,
                                ConsistencyLevel.ALL,
@@ -157,6 +237,48 @@ class LeavingMultiDCHalveClusterTest extends LeavingBaseTest
             transientStateStart.countDown();
             Uninterruptibles.awaitUninterruptibly(transientStateEnd);
             orig.call();
+        }
+
+        public static void reset()
+        {
+            transientStateStart = new CountDownLatch(6);
+            transientStateEnd = new CountDownLatch(6);
+        }
+    }
+
+    /**
+     * ByteBuddy helper for halve cluster size with multi-DC failure scenario
+     */
+    @Shared
+    public static class BBHelperHalveClusterMultiDCFailure
+    {
+        static CountDownLatch transientStateStart = new CountDownLatch(6);
+        static CountDownLatch transientStateEnd = new CountDownLatch(6);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves halving the size of a 12 node cluster (6 per DC)
+            // We intercept the shutdown of the removed nodes (7-12) to validate token ranges
+            if (nodeNumber > 6)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperHalveClusterMultiDCFailure.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            transientStateStart.countDown();
+            Uninterruptibles.awaitUninterruptibly(transientStateEnd);
+            throw new UnsupportedOperationException("Simulated failure");
         }
 
         public static void reset()

@@ -44,7 +44,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
 @ExtendWith(VertxExtension.class)
-public class JoiningTestMultiDC extends JoiningBaseTest
+public class JoiningMultiDCTest extends JoiningBaseTest
 {
     @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 3, numDcs = 2, network = true, gossip = true, buildCluster = false)
     void allReadOneWrite(ConfigurableCassandraTestContext cassandraTestContext)

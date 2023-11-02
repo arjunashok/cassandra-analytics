@@ -40,7 +40,7 @@ import org.apache.cassandra.utils.Shared;
 import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
-public class JoiningTestSingleNode extends JoiningBaseTest
+public class JoiningSingleNodeTest extends JoiningBaseTest
 {
     @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
     void oneReadALLWrite(ConfigurableCassandraTestContext cassandraTestContext) throws Exception

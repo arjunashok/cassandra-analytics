@@ -20,11 +20,10 @@ package org.apache.cassandra.analytics.expansion;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
-import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Uninterruptibles;
@@ -47,7 +46,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
-import static junit.framework.TestCase.assertFalse;
+import static junit.framework.TestCase.assertTrue;
 import static junit.framework.TestCase.assertNotNull;
 
 public class JoiningBaseTest extends ResiliencyTestBase
@@ -62,6 +61,7 @@ public class JoiningBaseTest extends ResiliencyTestBase
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
         QualifiedTableName table = null;
+        List<IUpgradeableInstance> existingInstances = new ArrayList<>();
         List<IUpgradeableInstance> newInstances = new ArrayList<>();
         try
         {
@@ -74,6 +74,7 @@ public class JoiningBaseTest extends ResiliencyTestBase
                 for (int dc = 1; dc <= annotation.numDcs(); dc++)
                 {
                     IUpgradeableInstance dcNode = cluster.get(dcNodeIdx++);
+                    existingInstances.add(dcNode);
                     IUpgradeableInstance newInstance = ClusterUtils.addInstance(cluster,
                                                                                 dcNode.config().localDatacenter(),
                                                                                 dcNode.config().localRack(),
@@ -95,28 +96,32 @@ public class JoiningBaseTest extends ResiliencyTestBase
                 ClusterUtils.awaitRingState(seed, newInstance, "Joining");
             }
 
+            Session session = maybeGetSession();
             if (!isFailure)
             {
                 table = bulkWriteData(isCrossDCKeyspace, writeCL);
-                Session session = maybeGetSession();
                 assertNotNull(table);
                 validateData(session, table.tableName(), readCL);
             }
             else
             {
                 table = bulkWriteData(isCrossDCKeyspace, writeCL, transientStateEnd);
-                Session session = maybeGetSession();
                 assertNotNull(table);
                 validateData(session, table.tableName(), readCL);
 
-                Thread.sleep(2000);
+                Thread.sleep(5000);
 
                 // check join node not part of cluster when join fails
-                boolean val = areJoiningNodesPartOfCluster(cluster.getFirstRunningInstance(), newInstances);
-                assertFalse(val);
+                for (IUpgradeableInstance joiningNode : newInstances)
+                {
+                    Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail = joiningNodeDetail(existingInstances, joiningNode.broadcastAddress()
+                                                                                                                                   .getAddress()
+                                                                                                                                   .getHostAddress());
+                    assertTrue(joiningNodeDetail.isEmpty() || joiningNodeDetail.get().getStatus().equals("DOWN"));
+                }
             }
         }
-        catch (InterruptedException | IllegalArgumentException e)
+        catch (InterruptedException e)
         {
             throw new RuntimeException(e);
         }
@@ -206,15 +211,19 @@ public class JoiningBaseTest extends ResiliencyTestBase
         return schema;
     }
 
-    private boolean areJoiningNodesPartOfCluster(IUpgradeableInstance seed, List<IUpgradeableInstance> joiningNodes)
+    private Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail(List<IUpgradeableInstance> existingInstances, String ipAddress)
     {
-        Set<String> joiningAddresses = joiningNodes.stream()
-                                                   .map(node -> node.broadcastAddress().getAddress().getHostAddress())
-                                                   .collect(Collectors.toSet());
-        return ClusterUtils.ring(seed)
-                           .stream()
-                           .anyMatch(i -> {
-                               return joiningAddresses.contains(i.getAddress());
-                           });
+        for (IUpgradeableInstance instance : existingInstances)
+        {
+            Optional<ClusterUtils.RingInstanceDetails> joiningNodeDetail = ClusterUtils.ring(instance)
+                                                                                       .stream()
+                                                                                       .filter(i -> i.getAddress().equals(ipAddress))
+                                                                                       .findFirst();
+            if (joiningNodeDetail.isPresent())
+            {
+                return joiningNodeDetail;
+            }
+        }
+        return Optional.empty();
     }
 }

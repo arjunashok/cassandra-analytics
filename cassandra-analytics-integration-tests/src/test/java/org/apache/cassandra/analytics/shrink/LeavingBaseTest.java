@@ -61,7 +61,6 @@ class LeavingBaseTest extends ResiliencyTestBase
         {
             IUpgradeableInstance seed = cluster.get(1);
 
-
             for (int i = 0; i < leavingNodesPerDC * annotation.numDcs(); i++)
             {
                 IUpgradeableInstance node = cluster.get(cluster.size() - i);

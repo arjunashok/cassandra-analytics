@@ -107,6 +107,10 @@ public class JoiningBaseTest extends ResiliencyTestBase
             }
         }
 
+        /**
+         * We fail after triggering bulk writer job. We want to make sure that read validation clears if the
+         * if failure happens in transient node
+         */
         if (isFailure)
         {
             table = bulkWriteData(isCrossDCKeyspace, writeCL);

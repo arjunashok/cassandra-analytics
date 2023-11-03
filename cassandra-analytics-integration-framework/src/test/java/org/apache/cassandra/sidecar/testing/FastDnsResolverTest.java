@@ -1,5 +1,7 @@
 package org.apache.cassandra.sidecar.testing;
 
+import java.net.UnknownHostException;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -7,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FastDnsResolverTest
 {
     @Test
-    void testResolve()
+    void testResolve() throws UnknownHostException
     {
         IntegrationTestBase.FastDnsResolver resolver = new IntegrationTestBase.FastDnsResolver();
         assertThat(resolver.resolve("localhost")).isEqualTo("127.0.0.1");
@@ -17,7 +19,7 @@ class FastDnsResolverTest
     }
 
     @Test
-    void testReverseResolve()
+    void testReverseResolve() throws UnknownHostException
     {
         IntegrationTestBase.FastDnsResolver resolver = new IntegrationTestBase.FastDnsResolver();
         assertThat(resolver.reverseResolve("127.0.0.1")).isEqualTo("localhost");

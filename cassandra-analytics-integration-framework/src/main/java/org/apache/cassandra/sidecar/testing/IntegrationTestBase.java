@@ -19,6 +19,7 @@
 package org.apache.cassandra.sidecar.testing;
 
 import java.io.IOException;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -279,9 +280,22 @@ public abstract class IntegrationTestBase
     {
         private static final Logger LOGGER = LoggerFactory.getLogger(FastDnsResolver.class);
         private static final Pattern HOSTNAME_PATTERN = Pattern.compile("^localhost(\\d+)?$");
+        private final DnsResolver delegate;
+
+        FastDnsResolver()
+        {
+            this(DnsResolver.DEFAULT);
+        }
+
+        FastDnsResolver(DnsResolver delegate)
+        {
+
+            this.delegate = delegate;
+        }
 
         /**
-         * Returns the resolved IP address from the hostname.
+         * Returns the resolved IP address from the hostname. If the {@code hostname} pattern is not matched,
+         * delegate the resolution to the delegate resolver.
          *
          * <pre>
          * resolver.resolve("localhost") = "127.0.0.1"
@@ -294,20 +308,21 @@ public abstract class IntegrationTestBase
          * @return the resolved IP address
          */
         @Override
-        public String resolve(String hostname)
+        public String resolve(String hostname) throws UnknownHostException
         {
             Matcher matcher = HOSTNAME_PATTERN.matcher(hostname);
             if (!matcher.matches())
             {
-                LOGGER.warn("Invalid hostname found {}. Skipping resolution", hostname);
-                return hostname;
+                LOGGER.warn("Invalid hostname found {}.", hostname);
+                return delegate.resolve(hostname);
             }
             String group = matcher.group(1);
             return "127.0.0." + (group != null ? group : "1");
         }
 
         /**
-         * Returns the resolved hostname from the given {@code address}.
+         * Returns the resolved hostname from the given {@code address}. When an invalid IP address is provided,
+         * delegates {@code address} resolution to the delegate.
          *
          * <pre>
          * resolver.reverseResolve("127.0.0.1") = "localhost"
@@ -320,14 +335,14 @@ public abstract class IntegrationTestBase
          * @return the resolved hostname for the given {@code address}
          */
         @Override
-        public String reverseResolve(String address)
+        public String reverseResolve(String address) throws UnknownHostException
         {
             // IP addresses have the form 127.0.0.x
             int lastDotIndex = address.lastIndexOf('.');
             if (lastDotIndex < 0 || lastDotIndex + 1 == address.length())
             {
-                LOGGER.warn("Invalid ip address found {}. Skipping reverse resolution", address);
-                return address;
+                LOGGER.warn("Invalid ip address found {}.", address);
+                return delegate.reverseResolve(address);
             }
             String netNumber = address.substring(lastDotIndex + 1);
             return "1".equals(netNumber) ? "localhost" : "localhost" + netNumber;

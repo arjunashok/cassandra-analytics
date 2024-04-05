@@ -24,7 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -52,7 +52,7 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
     private final SQLContext sqlContext;
     private final JavaSparkContext sparkContext;
     private final Broadcast<BulkWriterContext> broadcastContext;
-    private long startTimeNanos;
+    private final JobStatsListener jobStatsListener;
 
     @SuppressWarnings("RedundantTypeArguments")
     public CassandraBulkSourceRelation(BulkWriterContext writerContext, SQLContext sqlContext)
@@ -61,6 +61,14 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
         this.sqlContext = sqlContext;
         this.sparkContext = JavaSparkContext.fromSparkContext(sqlContext.sparkContext());
         this.broadcastContext = sparkContext.<BulkWriterContext>broadcast(writerContext);
+        this.jobStatsListener = new JobStatsListener((jobEventDetail) -> {
+            if (writerContext.job().getId().toString().equals(jobEventDetail.internalJobID()))
+            {
+                writerContext.jobStats().publish(jobEventDetail.jobStats());
+            }
+        });
+
+        this.sparkContext.sc().addSparkListener(jobStatsListener);
     }
 
     @Override
@@ -94,7 +102,6 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
     @Override
     public void insert(@NotNull Dataset<Row> data, boolean overwrite)
     {
-        this.startTimeNanos = System.nanoTime();
         if (overwrite)
         {
             throw new LoadNotSupportedException("Overwriting existing data needs TRUNCATE on Cassandra, which is not supported");
@@ -123,7 +130,6 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
         }
         catch (Throwable throwable)
         {
-            publishFailureJobStats(throwable.getMessage());
             LOGGER.error("Bulk Write Failed", throwable);
             throw new RuntimeException("Bulk Write to Cassandra has failed", throwable);
         }
@@ -157,36 +163,16 @@ public class CassandraBulkSourceRelation extends BaseRelation implements Inserta
                     rowCount,
                     totalBytesWritten,
                     hasClusterTopologyChanged);
-        writerContext.jobStats().publish(new HashMap<String, String>()
+        Map<String, String> stats = new HashMap<>()
         {
             {
                 put("jobId", writerContext.job().getId().toString());
                 put("rowsWritten", Long.toString(rowCount));
                 put("bytesWritten", Long.toString(totalBytesWritten));
-                put("jobStatus", "Succeeded");
                 put("clusterResizeDetected", String.valueOf(hasClusterTopologyChanged));
-                put("jobElapsedTimeMillis", Long.toString(getElapsedTimeMillis()));
             }
-        });
-    }
-
-    private void publishFailureJobStats(String reason)
-    {
-        writerContext.jobStats().publish(new HashMap<String, String>()
-        {
-            {
-                put("jobId", writerContext.job().getId().toString());
-                put("jobStatus", "Failed");
-                put("failureReason", reason);
-                put("jobElapsedTimeMillis", Long.toString(getElapsedTimeMillis()));
-            }
-        });
-    }
-
-    private long getElapsedTimeMillis()
-    {
-        long now = System.nanoTime();
-        return TimeUnit.NANOSECONDS.toMillis(now - this.startTimeNanos);
+        };
+        writerContext.jobStats().publish(stats);
     }
 
     /**

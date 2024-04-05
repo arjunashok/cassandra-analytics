@@ -59,7 +59,6 @@ public class CassandraBulkWriterContext implements BulkWriterContext, KryoSerial
     private transient DataTransferApi dataTransferApi;
     private final CassandraClusterInfo clusterInfo;
     private final SchemaInfo schemaInfo;
-
     private transient JobStatsPublisher jobStatsPublisher;
 
     protected CassandraBulkWriterContext(@NotNull BulkSparkConf conf,
@@ -132,14 +131,14 @@ public class CassandraBulkWriterContext implements BulkWriterContext, KryoSerial
 
     private void publishInitialJobStats(String sparkVersion)
     {
-        Map<String, String> initialJobStats = new HashMap<String, String>()
+        Map<String, String> jobStats = new HashMap<>()
         {{
-            put("jobId", jobInfo.getId().toString());
             put("sparkVersion", sparkVersion);
-            put("keyspace", jobInfo.getId().toString());
-            put("table", jobInfo.getId().toString());
+            put("jobId", jobInfo.getId().toString());
+            put("keyspace", jobInfo.keyspace());
+            put("table", jobInfo.tableName());
         }};
-        jobStatsPublisher.publish(initialJobStats);
+        publish(jobStats);
     }
 
     @Override
@@ -238,5 +237,10 @@ public class CassandraBulkWriterContext implements BulkWriterContext, KryoSerial
                                conf.getTimestampOptions(),
                                lowestCassandraVersion,
                                conf.quoteIdentifiers);
+    }
+
+    public void publish(Map<String, String> stats)
+    {
+        LOGGER.info("Job Stats:" + stats);
     }
 }
